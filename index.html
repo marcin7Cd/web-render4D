@@ -401,17 +401,17 @@ async function main() {
 	motion_transformation = mutiply_matrices5x5(_temp, motion_transformation)
 	
 	function transform_at_origin(transformation) {
-		return mutiply_matrices5x5(translation_matrix([0.25, 0.25, 0.25, 0]), 
-					 mutiply_matrices5x5(transformation, translation_matrix([-0.25, -0.25, -0.25, 0])) )
+		return mutiply_matrices5x5(translation_matrix([0.25, 0.25, 0.25, 0.25]), 
+					 mutiply_matrices5x5(transformation, translation_matrix([-0.25, -0.25, -0.25, -0.25])) )
 	}
 	
-	const transformations = [translation_matrix([0.25, 0.25, 0.25, 0]),
+	const transformations = [translation_matrix([0.25, 0.25, 0.25, 0.25]),
 													 //rotation_matrix((rotate_xy*90*diff)*Math.PI/180, 0, 1),
 													 //rotation_matrix((rotate_xz*90*diff)*Math.PI/180, 0, 2),
 													 rotation_matrix((rotate_zt*90*diff)*Math.PI/180, 2, 3),
 													 rotation_matrix((rotate_yt*90*diff)*Math.PI/180, 1, 3),
 													 rotation_matrix((rotate_xt*90*diff)*Math.PI/180, 0, 3),
-													 translation_matrix([-0.25, -0.25, -0.25, 0])]
+													 translation_matrix([-0.25, -0.25, -0.25, -0.25])]
 										
 	for (t of transformations) {
 		cur_transformation = mutiply_matrices5x5(cur_transformation, t);
