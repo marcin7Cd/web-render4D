@@ -1,0 +1,458 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebGPU Fragment Shader</title>
+    <style>
+        canvas {
+            width: 200;
+            height: 200;
+            display: block;
+        }
+    </style>
+</head>
+
+<body>
+		<p>Experimental 4D rendering of a hypercube with occlucions. <b>Works only with GPU and a browsers with webGPU.</b></p>
+    <canvas id="gpuCanvas" width=600 height=600></canvas>
+		<p>To pause you can press P. Use keys Q,W,E to trigger rotations involving 4th dimension. With mouse you can rotate the projection in 3D.</p>
+
+<script src="renderer.js"> </script> 
+<script id="hypercube" type="hypershape">16 8
+0 0 0 0
+0.5 0 0 0
+0 0.5 0 0
+0.5 0.5 0 0
+0 0 0.5 0
+0.5 0 0.5 0
+0 0.5 0.5 0
+0.5 0.5 0.5 0
+0 0 0 0.5
+0.5 0 0 0.5
+0 0.5 0 0.5
+0.5 0.5 0 0.5
+0 0 0.5 0.5
+0.5 0 0.5 0.5
+0 0.5 0.5 0.5
+0.5 0.5 0.5 0.5
+
+12
+0 8 10 101
+0 2 10 101
+0 4 6 101
+0 2 6 101
+0 8 12 101
+0 4 12 101
+2 6 14 101
+2 10 14 101
+4 6 14 101
+4 12 14 101
+8 12 14 101
+8 10 14 101
+12
+1 9 11 101
+1 3 11 101
+1 5 7 101
+1 3 7 101
+1 9 13 101
+1 5 13 101
+3 7 15 101
+3 11 15 101
+5 7 15 101
+5 13 15 101
+9 13 15 101
+9 11 15 101
+12
+0 8 9 101
+0 1 9 101
+0 4 5 101
+0 1 5 101
+0 8 12 101
+0 4 12 101
+1 5 13 101
+1 9 13 101
+4 5 13 101
+4 12 13 101
+8 12 13 101
+8 9 13 101
+12
+2 10 11 101
+2 3 11 101
+2 6 7 101
+2 3 7 101
+2 10 14 101
+2 6 14 101
+3 7 15 101
+3 11 15 101
+6 7 15 101
+6 14 15 101
+10 14 15 101
+10 11 15 101
+12
+0 8 9 101
+0 1 9 101
+0 2 3 101
+0 1 3 101
+0 8 10 101
+0 2 10 101
+1 3 11 101
+1 9 11 101
+2 3 11 101
+2 10 11 101
+8 10 11 101
+8 9 11 101
+12
+4 12 13 101
+4 5 13 101
+4 6 7 101
+4 5 7 101
+4 12 14 101
+4 6 14 101
+5 7 15 101
+5 13 15 101
+6 7 15 101
+6 14 15 101
+12 14 15 101
+12 13 15 101
+12
+0 4 5 101
+0 1 5 101
+0 2 3 101
+0 1 3 101
+0 4 6 101
+0 2 6 101
+1 3 7 101
+1 5 7 101
+2 3 7 101
+2 6 7 101
+4 6 7 101
+4 5 7 101
+12
+8 12 13 101
+8 9 13 101
+8 10 11 101
+8 9 11 101
+8 12 14 101
+8 10 14 101
+9 11 15 101
+9 13 15 101
+10 11 15 101
+10 14 15 101
+12 14 15 101
+12 13 15 101
+</script>
+<script>
+
+function from_binary(text) {
+	exp = 1
+	sum = 0
+	for (let i=text.length - 1; i>=0; i--) {
+		sum += exp*(text[i] == '1');
+		exp *= 2;
+	}
+	return sum;
+}
+
+function format_hypershape_data(text) {
+	rows = text.split("\n");
+	numbers = rows[0].split(" ");
+	num_of_cords = parseInt(numbers[0]);
+	num_of_cells = parseInt(numbers[1]);
+	cur_row = 1;
+	cords = []
+	for (let i = 0; i < num_of_cords; i++) {
+		cords.push(rows[cur_row + i].split(" ").slice(0,4).map(parseFloat));
+	}
+	cur_row += num_of_cords;
+	cur_row += 1; //for new line between coords and cells
+	triangles = []
+	triangles_info = []
+	for (let cell = 0; cell < num_of_cells; cell++) {
+		cell_num_of_triangles = parseInt(rows[cur_row]);
+		cur_row += 1
+		for (let j = 0; j < cell_num_of_triangles; j++) {
+			entry =  rows[cur_row + j].split(" ")
+			cur_triangle = entry.splice(0,3).map((x) => cords[parseFloat(x)])
+			//first three numbers are consumed
+			duplicate_id = triangles.findIndex((t) => (
+										t[0] == cur_triangle[0] &&
+										t[1] == cur_triangle[1] &&
+										t[2] == cur_triangle[2]))
+			if (duplicate_id == -1) {
+				triangles.push(cur_triangle);
+				triangles_info.push([cell+1, 0, from_binary(entry[0]),0])
+				//triangles_info.push([cell+1, 0, 7,0])
+			}
+			else {
+				triangles_info[duplicate_id][1] = cell + 1
+			}
+		}
+		cur_row += cell_num_of_triangles;
+	}
+	
+	return [triangles, triangles_info]
+}
+
+async function main() {
+	let object_to_render = format_hypershape_data(document.querySelector("#hypercube").text);
+	console.log(object_to_render[0].length)
+  const adapter = await navigator.gpu?.requestAdapter();
+  const device = await adapter?.requestDevice();
+  if (!device) {
+    fail('need a browser that supports WebGPU');
+    return;
+  }
+
+  // Get a WebGPU context from the canvas and configure it
+  const canvas = document.querySelector('canvas');
+  const context = canvas.getContext('webgpu');
+  const presentationFormat = navigator.gpu.getPreferredCanvasFormat();
+  context.configure({
+    device,
+    format: presentationFormat,
+  });
+
+  const module = device.createShaderModule({
+    label: 'our hardcoded textured quad shaders',
+    code: `
+      struct OurVertexShaderOutput {
+        @builtin(position) position: vec4f,
+        @location(0) texcoord: vec2f,
+      };
+
+      @vertex fn vs(
+        @builtin(vertex_index) vertexIndex : u32
+      ) -> OurVertexShaderOutput {
+        let pos = array(
+          // 1st triangle
+          vec2f( -1.0, -1.0),  
+          vec2f( 1.0,  -1.0),  
+          vec2f( -1.0,  1.0),  
+
+          // 2st triangle
+          vec2f( 1.0,  1.0), 
+          vec2f( -1.0,  1.0),  
+          vec2f( 1.0,  -1.0),  
+        );
+
+        var vsOutput: OurVertexShaderOutput;
+        let xy = pos[vertexIndex];
+        vsOutput.position = vec4f(xy, 0.0, 1.0);
+        vsOutput.texcoord = xy;
+        return vsOutput;
+      }
+
+      @group(0) @binding(0) var ourSampler: sampler;
+      @group(0) @binding(1) var ourTexture: texture_2d<f32>;
+
+      @fragment fn fs(fsInput: OurVertexShaderOutput) -> @location(0) vec4f {
+        return textureSample(ourTexture, ourSampler, (fsInput.texcoord + vec2f(1.0, 1.0))/2 );
+      }
+    `,
+  });
+
+  const pipeline = device.createRenderPipeline({
+    label: 'hardcoded textured quad pipeline',
+    layout: 'auto',
+    vertex: {
+      module,
+    },
+    fragment: {
+      module,
+      targets: [{ format: presentationFormat }],
+    },
+  });
+
+	
+  const kTextureWidth = 200;
+  const kTextureHeight = 200;
+
+	
+  const texture = device.createTexture({
+    label: 'yellow F on red',
+    size: [kTextureWidth, kTextureHeight],
+    format: 'rgba8unorm',
+    usage:
+      GPUTextureUsage.TEXTURE_BINDING |
+      GPUTextureUsage.COPY_DST,
+  });
+	
+	function mutiply_matrices5x5(A, B) {
+		var resM = [];
+		for (let i=0; i < 5 ; i+= 1){
+			resM.push([])
+			for (let j=0; j<5; j+=1) {
+				let sum = 0;
+					for(let k=0; k<5; k+=1){
+						sum += A[i][k] * B[k][j];
+					}
+				resM[i].push(sum)
+			}
+		}
+		return resM
+	}
+	
+	function translation_matrix(p) {
+		return [[1,0,0,0,p[0]],
+		        [0,1,0,0,p[1]],
+						[0,0,1,0,p[2]],
+						[0,0,0,1,p[3]],
+						[0,0,0,0,1]];
+	}
+	
+	function rotation_matrix(angle, ax1, ax2) {
+		let matrix = [[1,0,0,0,0],
+									[0,1,0,0,0],
+									[0,0,1,0,0],
+									[0,0,0,1,0],
+									[0,0,0,0,1]];
+		matrix[ax1][ax1] = Math.cos(angle);
+		matrix[ax1][ax2] = Math.sin(angle);
+		matrix[ax2][ax2] = Math.cos(angle);
+		matrix[ax2][ax1] = -Math.sin(angle);
+		return matrix;
+	}
+	/*
+	const transformations = [translation_matrix([0.25, 0.25, 0.25, 0]),
+													 rotation_matrix(0*Math.PI/180, 3, 4),
+													 translation_matrix([-0.25, -0.25, -0.25, 0])]
+	*/
+	var transform = translation_matrix([0,0,0,0])
+	/*for (t of transformations) {
+		transform = mutiply_matrices5x5(transform, t);
+	}*/
+	const finalImage = await getRenderedImage(device, transform,
+	object_to_render);
+	device.queue.writeTexture(
+      { texture },
+      finalImage,
+      { bytesPerRow: kTextureWidth * 4 },
+      { width: kTextureWidth, height: kTextureHeight },
+  );
+
+  const sampler = device.createSampler();
+
+  const bindGroup = device.createBindGroup({
+    layout: pipeline.getBindGroupLayout(0),
+    entries: [
+      { binding: 0, resource: sampler },
+      { binding: 1, resource: texture.createView() },
+    ],
+  });
+
+  const renderPassDescriptor = {
+    label: 'our basic canvas renderPass',
+    colorAttachments: [
+      {
+        // view: <- to be filled out when we render
+        clearValue: [0.3, 0.3, 0.3, 1],
+        loadOp: 'clear',
+        storeOp: 'store',
+      },
+    ],
+  };
+	var run_animation = true;
+	var rotate_zt = 0.0;
+	var rotate_xt = 0.0;
+	var rotate_yt = 0.0;
+	function check_pause (e) {
+		if (e.key == "p") {
+			run_animation = !run_animation;
+		}
+		if (e.key == "w") {
+			rotate_zt =  1 - rotate_zt;
+		}
+		if (e.key == "e") {
+			rotate_xt =  1 - rotate_xt;
+		}
+		if (e.key == "q") {
+			rotate_yt = 1 -rotate_yt;
+		}
+	}
+	document.addEventListener("keydown", check_pause)
+	
+	var rotate_xy = 0.0;
+	var rotate_yz = 0.0;
+	canvas.addEventListener("mousemove", (e) => {
+		let x = (e.offsetX/300)-1;
+		let y = (e.offsetY/300)-1;
+		rotate_xy = x*Math.abs(x);
+		rotate_yz = y*Math.abs(y);
+		//console.log(rotate_xy, rotate_xz)
+	})
+	
+	then = 0;
+	var cur_transformation = rotation_matrix(12, 1, 2);
+	var motion_transformation = translation_matrix([0,0,0,0]);
+	
+  async function render(now) {
+	
+	now = now*0.001
+	if (! run_animation) {
+		requestAnimationFrame(render);
+		return;
+	}
+	diff = now - then;
+	then = now;
+	var _temp = mutiply_matrices5x5(rotation_matrix((-rotate_yz*90*diff)*Math.PI/180,0,2), 
+															rotation_matrix((rotate_xy*90*diff)*Math.PI/180,0,1))
+	motion_transformation = mutiply_matrices5x5(_temp, motion_transformation)
+	
+	function transform_at_origin(transformation) {
+		return mutiply_matrices5x5(translation_matrix([0.25, 0.25, 0.25, 0]), 
+					 mutiply_matrices5x5(transformation, translation_matrix([-0.25, -0.25, -0.25, 0])) )
+	}
+	
+	const transformations = [translation_matrix([0.25, 0.25, 0.25, 0]),
+													 //rotation_matrix((rotate_xy*90*diff)*Math.PI/180, 0, 1),
+													 //rotation_matrix((rotate_xz*90*diff)*Math.PI/180, 0, 2),
+													 rotation_matrix((rotate_zt*90*diff)*Math.PI/180, 2, 3),
+													 rotation_matrix((rotate_yt*90*diff)*Math.PI/180, 1, 3),
+													 rotation_matrix((rotate_xt*90*diff)*Math.PI/180, 0, 3),
+													 translation_matrix([-0.25, -0.25, -0.25, 0])]
+										
+	for (t of transformations) {
+		cur_transformation = mutiply_matrices5x5(cur_transformation, t);
+	}
+	const final_transformation = mutiply_matrices5x5(transform_at_origin(motion_transformation), cur_transformation);
+	const finalImage = await getRenderedImage(device, final_transformation, object_to_render);
+	device.queue.writeTexture(
+      { texture },
+      finalImage,
+      { bytesPerRow: kTextureWidth * 4 },
+      { width: kTextureWidth, height: kTextureHeight },
+  );
+	
+	
+    // Get the current texture from the canvas context and
+    // set it as the texture to render to.
+    renderPassDescriptor.colorAttachments[0].view =
+        context.getCurrentTexture().createView();
+
+    const encoder = device.createCommandEncoder({
+      label: 'render quad encoder',
+    });
+    const pass = encoder.beginRenderPass(renderPassDescriptor);
+    pass.setPipeline(pipeline);
+    pass.setBindGroup(0, bindGroup);
+    pass.draw(6);  // call our vertex shader 6 times
+    pass.end();
+
+    const commandBuffer = encoder.finish();
+    device.queue.submit([commandBuffer]);
+		requestAnimationFrame(render);
+  }
+	requestAnimationFrame(render);
+}
+
+function fail(msg) {
+  // eslint-disable-next-line no-alert
+  alert(msg);
+}
+main();
+
+</script>
+</body>
+</html>
