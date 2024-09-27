@@ -128,9 +128,6 @@ async function getRenderedImage(device, transform, triangle_data) {
 					is_intersected = true;
 					p_x = (outTriangles[lid.x].a_x[2]*x + outTriangles[lid.x].a_y[2]*y +outTriangles[lid.x].a_0[2])/denominator;
 					p_y = (outTriangles[lid.x].a_x[3]*x + outTriangles[lid.x].a_y[3]*y +outTriangles[lid.x].a_0[3])/denominator;
-					let scale = 1000.0; 
-					p_x = f32(i32(p_x*scale))/scale;  //snap to a grid. This removes artifacts.
-					p_y = f32(i32(p_y*scale))/scale;
 					let weight = 0.02;
 					is_edge = (((outTriangles[lid.x].visibility & 2)>0) && p_u < weight) ||
 									  (((outTriangles[lid.x].visibility & 1)>0) && p_v < weight) ||
