@@ -184,7 +184,7 @@ function format_hypershape_data(text) {
 										t[2] == cur_triangle[2]))
 			if (duplicate_id == -1) {
 				triangles.push(cur_triangle);
-				triangles_info.push([cell+1, 0, from_binary(entry[0]),0])
+				triangles_info.push([cell+1, 0, from_binary(entry[0].trim()),0])
 				//triangles_info.push([cell+1, 0, 7,0])
 			}
 			else {
