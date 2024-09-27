@@ -1,9 +1,8 @@
 async function getRenderedImage(device, transform, triangle_data) {
   const kTextureWidth = 200;
   const kTextureHeight = 200;
-
-	
-	
+  const triangle_count = triangle_data[0].length;
+  const cell_count = Math.max(...triangle_data[1].map((x) => Math.max(x[0], x[1])));
 	
 	const module2 = device.createShaderModule({
 	code : `
@@ -52,9 +51,9 @@ async function getRenderedImage(device, transform, triangle_data) {
 		@group(0) @binding(2) var<storage, read> trianglesInfo : array<TriangleMetaData>;
 		@group(0) @binding(3) var<uniform> sceneData : SceneData;
 		
-		var<workgroup> outTriangles : array<TriangleTemp, 48>;
-		var<workgroup> intersections : array<RayPointData, 16>;
-		var<workgroup> cell_intersections_count : array<atomic<u32>, 8>;
+		var<workgroup> outTriangles : array<TriangleTemp, ${triangle_count}>;
+		var<workgroup> intersections : array<RayPointData, ${2*cell_count}>;
+		var<workgroup> cell_intersections_count : array<atomic<u32>, ${cell_count}>;
 		var<workgroup> number_of_barriers : atomic<u32>;
 		const width = ${kTextureWidth};
 		
@@ -104,7 +103,7 @@ async function getRenderedImage(device, transform, triangle_data) {
 			}
 		}
 		var<workgroup> is_on_edge : bool;
-		@compute @workgroup_size(48) 
+		@compute @workgroup_size(${triangle_count}) 
 		fn computeStuff(@builtin(local_invocation_id) lid : vec3<u32>,
 		@builtin(workgroup_id) wid : vec3<u32>,
 		@builtin(num_workgroups) wgs : vec3<u32>) {
@@ -154,13 +153,13 @@ async function getRenderedImage(device, transform, triangle_data) {
 			
 			var is_blocked : bool = false;
 			//I HAVE TO CHECK IF INTERSECTION EXISTS
-			if (lid.x < 8*2 && atomicLoad(&cell_intersections_count[lid.x / 2]) > (lid.x % 2)) {
+			if (lid.x < ${cell_count*2} && atomicLoad(&cell_intersections_count[lid.x / 2]) > (lid.x % 2)) {
 				let vis = intersections[lid.x].visibility;
 				let p_slope = intersections[lid.x].slope;
 				let p_x = intersections[lid.x].x;
 				let p_y = intersections[lid.x].y;
 				
-				for (var cell : u32 = 0; cell < 8; cell+=1) { //iterate over segments and check if cur point is blocked
+				for (var cell : u32 = 0; cell < ${cell_count}; cell+=1) { //iterate over segments and check if cur point is blocked
 					if (atomicLoad(&cell_intersections_count[cell]) > 1) {
 						var k : u32 = 2*cell;
 						if(intersections[2*cell].slope >= intersections[2*cell + 1].slope){
@@ -211,13 +210,13 @@ async function getRenderedImage(device, transform, triangle_data) {
 	
 	const triangleBuffer = device.createBuffer({
 		label : 'triangles',
-		size : 4*(4*3)*48,
+		size : 4*(4*3)*triangle_count,
 		usage : GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
 	});
 	
 	const triangleInfoBuffer = device.createBuffer({
 		label : 'triangles',
-		size : 4*(4)*48,
+		size : 4*(4)*triangle_count,
 		usage : GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
 	});
 	

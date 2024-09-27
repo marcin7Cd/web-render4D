@@ -17,8 +17,10 @@
 <body>
 		<p>Experimental 4D rendering of a hypercube with occlucions. <b>Works only with GPU and a browsers with webGPU.</b></p>
     <canvas id="gpuCanvas" width=600 height=600></canvas>
-		<p>To pause you can press P. Use keys Q,W,E to trigger rotations involving 4th dimension. With mouse you can rotate the projection in 3D.</p>
-
+		<p>To pause you can press P. Use keys Q,W,E to trigger rotations involving 4th dimension. 
+			With mouse you can rotate the projection in 3D.</p>
+		<p>You can upload your own shape file here</p>
+		<input type="file" id="hypershape_input"></input>
 <script src="renderer.js"> </script> 
 <script id="hypercube" type="hypershape">16 8
 0 0 0 0
@@ -195,9 +197,24 @@ function format_hypershape_data(text) {
 	return [triangles, triangles_info]
 }
 
+var object_to_render = null;
+
+const shape_input = document.querySelector("#hypershape_input")
+
+function update_shape() {
+const curFiles = shape_input.files;
+	if (curFiles.length == 1) {
+		const reader = new FileReader()
+		reader.addEventListener('load', () => object_to_render = format_hypershape_data(reader.result))
+		reader.readAsText(curFiles[0]);
+	}
+}
+
+shape_input.addEventListener('change', update_shape)
+
 async function main() {
-	let object_to_render = format_hypershape_data(document.querySelector("#hypercube").text);
-	console.log(object_to_render[0].length)
+  object_to_render = format_hypershape_data(document.querySelector("#hypercube").text);
+  console.log(object_to_render)
   const adapter = await navigator.gpu?.requestAdapter();
   const device = await adapter?.requestDevice();
   if (!device) {
