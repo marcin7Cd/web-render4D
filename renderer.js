@@ -140,6 +140,10 @@ async function getRenderedImage(device, transform, triangle_data) {
 					if (is_edge) {
 						vis = 1.0;
 					}
+					//check if the triangle should be flush (i.e. not counted as boundary)
+					if ((outTriangles[lid.x].visibility & 8) > 0) { 
+						vis = -1.0;
+					}
 					dump_to(outTriangles[lid.x].left_cell, RayPointData(p_x, p_y, vis, p_x/p_y), wid);
 					dump_to(outTriangles[lid.x].right_cell, RayPointData(p_x, p_y, vis, p_x/p_y), wid);
 				}
@@ -178,7 +182,9 @@ async function getRenderedImage(device, transform, triangle_data) {
 				
 				
 				if (!is_blocked) {
-					atomicAdd(&number_of_barriers, 1);
+					if (vis >= 0) {
+						atomicAdd(&number_of_barriers, 1);
+					}
 					if (vis > 0.5) {
 						is_on_edge = true;
 					}
