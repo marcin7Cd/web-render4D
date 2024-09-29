@@ -180,9 +180,9 @@ async function getRenderedImage(device, transform, triangle_data) {
 						if(intersections[2*cell].slope >= intersections[2*cell + 1].slope){
 							k = 2*cell + 1;
 						}
-						if (intersections[k].slope < p_slope && p_slope < intersections[k ^ 1].slope){
+						if (intersections[k].slope <= p_slope && p_slope <= intersections[k ^ 1].slope){
 							if ((intersections[k ^ 1].x - intersections[k].x) * (p_y - intersections[k].y) -
-									(intersections[k ^ 1].y - intersections[k].y) * (p_x - intersections[k].x) <= 0)
+									(intersections[k ^ 1].y - intersections[k].y) * (p_x - intersections[k].x) > 0)
 								{
 									is_blocked = true;
 									break;
@@ -201,6 +201,7 @@ async function getRenderedImage(device, transform, triangle_data) {
 					}
 				}
 			}
+			workgroupBarrier();
 			if (lid.x == 0) {
 				//let alpha = 1 - pow(0.9, f32(atomicLoad(&number_of_barriers)));
 				let alpha = f32(atomicLoad(&number_of_barriers))/10;
