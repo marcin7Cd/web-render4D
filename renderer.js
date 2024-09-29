@@ -1,3 +1,12 @@
+var _debug_pointX = 100.0;
+var _debug_pointY = 100.0;
+document.addEventListener("keydown", (event) => {
+	if (event.key == "l") {_debug_pointX += 1;}
+	if (event.key == "k") {_debug_pointY += 1;}
+	if (event.key == "j") {_debug_pointX -= 1;}
+	if (event.key == "h") {_debug_pointY -= 1;}
+})
+
 async function getRenderedImage(device, transform, triangle_data) {
   const kTextureWidth = 200;
   const kTextureHeight = 200;
@@ -11,7 +20,8 @@ async function getRenderedImage(device, transform, triangle_data) {
 			focal_point : vec4<f32>,
 			direction : vec4<f32>,
 			directionX : vec4<f32>,
-			directionY : vec4<f32>
+			directionY : vec4<f32>,
+			debug_pixel : vec2<f32>
 		};
 		
 		struct Triangle {
@@ -50,6 +60,7 @@ async function getRenderedImage(device, transform, triangle_data) {
 		@group(0) @binding(1) var<storage, read> triangles : array<Triangle>;
 		@group(0) @binding(2) var<storage, read> trianglesInfo : array<TriangleMetaData>;
 		@group(0) @binding(3) var<uniform> sceneData : SceneData;
+		@group(1) @binding(0) var<storage, read_write> out_debug : array<vec2<f32>>;
 		
 		var<workgroup> outTriangles : array<TriangleTemp, ${triangle_count}>;
 		var<workgroup> intersections : array<RayPointData, ${2*cell_count}>;
@@ -199,6 +210,19 @@ async function getRenderedImage(device, transform, triangle_data) {
 				} else {
 					out[wid.x + width*wid.y] = brightness + brightness*256 + brightness*256*256;
 				}
+				if (u32(sceneData.debug_pixel[0]) == wid.x && u32(sceneData.debug_pixel[1]) == wid.y) {
+					out[wid.x + width*wid.y] = 0xFF00FF;
+					var position = 0;
+					for (var k = 0; k < ${cell_count}; k += 1) {
+						if (atomicLoad(&cell_intersections_count[k]) > 0) {
+							out_debug[position*2][0] = intersections[k*2].x;
+							out_debug[position*2][1] = intersections[k*2].y;
+							out_debug[position*2 + 1][0] = intersections[k*2 + 1].x;
+							out_debug[position*2 + 1][1] = intersections[k*2 + 1].y;
+							position += 1;
+						}
+					}
+				}
 			}
 		}
 		
@@ -228,8 +252,20 @@ async function getRenderedImage(device, transform, triangle_data) {
 	
 	const sceneBuffer = device.createBuffer({
 		label : 'scene',
-		size : 5*4 + 60,
+		size : 5*4 + 76,
 		usage : GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
+	});
+
+	const outDebugBuffer = device.createBuffer({
+		label : 'outDebug',
+		size  : (2*cell_count)*2*4,
+		usage : GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC,
+	});
+
+	const outDebugReadBuffer = device.createBuffer({
+		label : 'outDebugRead',
+		size  : (2*cell_count)*2*4,
+		usage : GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST,
 	});
 	
 	const textureBuffer = device.createBuffer({
@@ -252,6 +288,10 @@ async function getRenderedImage(device, transform, triangle_data) {
 			{binding : 3 , resource : {buffer : sceneBuffer}}
 		]
 	});
+	const bindGroup3 = device.createBindGroup({
+		layout : computePipeline.getBindGroupLayout(1),
+		entries : [{binding : 0, resource : {buffer : outDebugBuffer}}]
+	})
 	
 	function matrix_mult(A, v) {
 		let w = A[4][0]*v[0] + A[4][1]*v[1] + A[4][2]*v[2] + A[4][3]*v[3] + A[4][4]
@@ -304,7 +344,8 @@ async function getRenderedImage(device, transform, triangle_data) {
 	                   0.125, 0.125, 0.125, -10.0,
 										 2.0, 0.0, 0.0, 0.0,
 										 0.0, 1.0/kTextureWidth, 0.0, 0.0,
-										 0.0, 0.0, 1.0/kTextureHeight, 0.0]
+										 0.0, 0.0, 1.0/kTextureHeight, 0.0,
+										 Math.round(_debug_pointX), Math.round(_debug_pointY)]
 										 
 	device.queue.writeBuffer(triangleBuffer, 0, new Float32Array(triangles));
 	device.queue.writeBuffer(triangleInfoBuffer, 0, new Int32Array(triangleInfo));
@@ -315,13 +356,17 @@ async function getRenderedImage(device, transform, triangle_data) {
 	
 	pass.setPipeline(computePipeline);
 	pass.setBindGroup(0, bindGroup2);
+	pass.setBindGroup(1, bindGroup3);
 	pass.dispatchWorkgroups(kTextureWidth,kTextureHeight,1)
 	pass.end()
 	
 	encoder.copyBufferToBuffer(textureBuffer, 0, textureReadBuffer, 0, textureSize);
+	encoder.copyBufferToBuffer(outDebugBuffer, 0, outDebugReadBuffer, 0, (2*cell_count)*2*4);
 	
 	device.queue.submit([encoder.finish()])
 	await textureReadBuffer.mapAsync(GPUMapMode.READ);
-	return new Uint8Array(textureReadBuffer.getMappedRange());
+	await outDebugReadBuffer.mapAsync(GPUMapMode.READ);
+	return [new Uint8Array(textureReadBuffer.getMappedRange()), 
+		    new Float32Array(outDebugReadBuffer.getMappedRange())]
 	
 }

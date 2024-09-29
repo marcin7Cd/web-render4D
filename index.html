@@ -9,14 +9,23 @@
         canvas {
             width: 200;
             height: 200;
-            display: block;
+            display: inline-block;
+            border: 1px solid black;
+            margin: 10px;
+        }
+        .canvas-container {
+            text-align: center;
+            margin-top: 50px;
         }
     </style>
 </head>
 
 <body>
 		<p>Experimental 4D rendering of a hypercube with occlucions. <b>Works only with GPU and a browsers with webGPU.</b></p>
-    <canvas id="gpuCanvas" width=600 height=600></canvas>
+	<div class="canvas-container">
+    	<canvas id="gpuCanvas" width=600 height=600></canvas>
+		<canvas id="debugCanvas" width=600 height="600"></canvas>
+	</div>
 		<p>To pause you can press P. Use keys Q,W,E to trigger rotations involving 4th dimension. 
 			With mouse you can rotate the projection in 3D.</p>
 		<p>You can upload your own shape file here</p>
@@ -212,6 +221,8 @@ const curFiles = shape_input.files;
 
 shape_input.addEventListener('change', update_shape)
 
+var debug_transformation = (a,b) => ([(a-1)*600 + 200, -(b-1)*600 + 200]);
+
 async function main() {
   object_to_render = format_hypershape_data(document.querySelector("#hypercube").text);
   console.log(object_to_render)
@@ -223,7 +234,7 @@ async function main() {
   }
 
   // Get a WebGPU context from the canvas and configure it
-  const canvas = document.querySelector('canvas');
+  const canvas = document.querySelector('#gpuCanvas');
   const context = canvas.getContext('webgpu');
   const presentationFormat = navigator.gpu.getPreferredCanvasFormat();
   context.configure({
@@ -340,8 +351,8 @@ async function main() {
 	/*for (t of transformations) {
 		transform = mutiply_matrices5x5(transform, t);
 	}*/
-	const finalImage = await getRenderedImage(device, transform,
-	object_to_render);
+	const finalImage = (await getRenderedImage(device, transform,
+	object_to_render))[0];
 	device.queue.writeTexture(
       { texture },
       finalImage,
@@ -404,6 +415,30 @@ async function main() {
 	var cur_transformation = rotation_matrix(12, 1, 2);
 	var motion_transformation = translation_matrix([0,0,0,0]);
 	
+
+  function draw_segments(points) {
+	const canvas = document.getElementById('debugCanvas');
+	const context = canvas.getContext('2d');
+	const N = points.length;
+	context.clearRect(0, 0, canvas.width, canvas.height);
+	for (let i = 0; i < N/4; i++) {
+		context.beginPath();
+		context.moveTo(...debug_transformation(points[4*i + 0],points[4*i + 1]));  // Move to start point
+		context.lineTo(...debug_transformation(points[4*i + 2],points[4*i + 3]));  // Move to start point
+		context.strokeStyle = 'black';  // Set line color
+		context.lineWidth = 2;  // Set line width
+		context.stroke();  // Draw the actual line	
+	}
+	for (let i = 0; i < 30; i++) {
+		context.beginPath();
+		context.moveTo(...debug_transformation(0,0));
+		context.lineTo(...debug_transformation(i*0.5,10));
+		context.strokeStyle = 'red';
+		context.lineWidth = 1;
+		context.stroke();
+	}
+  }
+
   async function render(now) {
 	
 	now = now*0.001
@@ -434,7 +469,10 @@ async function main() {
 		cur_transformation = mutiply_matrices5x5(cur_transformation, t);
 	}
 	const final_transformation = mutiply_matrices5x5(transform_at_origin(motion_transformation), cur_transformation);
-	const finalImage = await getRenderedImage(device, final_transformation, object_to_render);
+	const renderData = await getRenderedImage(device, final_transformation, object_to_render);
+	const finalImage = renderData[0];
+	const debugSegments = renderData[1];
+	draw_segments(debugSegments);
 	device.queue.writeTexture(
       { texture },
       finalImage,
