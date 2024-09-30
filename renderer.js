@@ -7,12 +7,45 @@ document.addEventListener("keydown", (event) => {
 	if (event.key == "h") {_debug_pointY -= 1;}
 })
 
-async function getRenderedImage(device, transform, triangle_data) {
+
+async function getRenderedImage(device, transform, triangle_data, indicator_transformation) {
   const kTextureWidth = 200;
   const kTextureHeight = 200;
-  const triangle_count = triangle_data[0].length;
-  const cell_count = Math.max(...triangle_data[1].map((x) => Math.max(x[0], x[1])));
+	const cell_count = Math.max(...triangle_data[1].map((x) => Math.max(x[0], x[1]))) + 2;
+	const triangle_count = triangle_data[0].length + 2;
 	
+	function matrix_mult(A, v) {
+		let w = A[4][0]*v[0] + A[4][1]*v[1] + A[4][2]*v[2] + A[4][3]*v[3] + A[4][4]
+
+		return [(A[0][0]*v[0] + A[0][1]*v[1] + A[0][2]*v[2] + A[0][3]*v[3] + A[0][4])/w,
+				(A[1][0]*v[0] + A[1][1]*v[1] + A[1][2]*v[2] + A[1][3]*v[3] + A[1][4])/w,
+				(A[2][0]*v[0] + A[2][1]*v[1] + A[2][2]*v[2] + A[2][3]*v[3] + A[2][4])/w,
+				(A[3][0]*v[0] + A[3][1]*v[1] + A[3][2]*v[2] + A[3][3]*v[3] + A[3][4])/w];
+	}
+	triangles = triangle_data[0].map( (t) => (t.map((v) => matrix_mult(transform, v))))
+	triangleInfo = triangle_data[1].map((x) => [x[0], x[1], x[2], x[3]])
+
+	//triangleInfo[2][2] += 16   
+	indicator_triangles = [[[0.25, 0.6, 0.25, -1], [0.25, 0.8, 0.3, -1], [0.25, 0.8, 0.2, -1]],
+                           [[0.25, 0.6, 0.25, -1], [0.3, 0.8, 0.25, -1], [0.2, 0.8, 0.25, -1]]]
+	indicator_triangles = indicator_triangles.map( (t) => t.map((p) => matrix_mult(indicator_transformation, p)))
+	triangles = triangles.concat(indicator_triangles)
+	triangleInfo.push([cell_count, 0, 7+16, 0])
+	triangleInfo.push([cell_count+1, 0, 7+16, 0])
+	
+	triangleInfo = [].concat(...triangleInfo)
+	//console.log(triangles)
+	//triangles.push([[0, 0, 0, 0], [0, 0.5, 0, 1], [0, 0.5, 0, 1]])
+	//triangleInfo.push([cell_count-6, 0, 7+16, 0])
+	triangles = [].concat(...triangles)
+	triangles = [].concat(...triangles)
+	const sceneData = [-2.0, 0.25, 0.25, 0.0,
+						0.125, 0.125, 0.125, -10.0,
+						2.0, 0.0, 0.0, 0.0,
+						0.0, 1.0/kTextureWidth, 0.0, 0.0,
+						0.0, 0.0, 1.0/kTextureHeight, 0.0,
+						Math.round(_debug_pointX), Math.round(_debug_pointY)]
+	//console.log(triangle_data)
 	const module2 = device.createShaderModule({
 	code : `
 		struct SceneData {
@@ -114,6 +147,7 @@ async function getRenderedImage(device, transform, triangle_data) {
 			}
 		}
 		var<workgroup> is_on_edge : bool;
+		var<workgroup> is_overlay : bool;
 		@compute @workgroup_size(${triangle_count}) 
 		fn computeStuff(@builtin(local_invocation_id) lid : vec3<u32>,
 		@builtin(workgroup_id) wid : vec3<u32>,
@@ -152,6 +186,9 @@ async function getRenderedImage(device, transform, triangle_data) {
 						vis = 1.0;
 					}
 					//check if the triangle should be flush (i.e. not counted as boundary)
+					if ((outTriangles[lid.x].visibility & 16) > 0) {
+					   is_overlay = true;
+					}
 					if ((outTriangles[lid.x].visibility & 8) > 0) { 
 						vis = -1.0;
 					}
@@ -210,6 +247,9 @@ async function getRenderedImage(device, transform, triangle_data) {
 					out[wid.x + width*wid.y] = brightness;
 				} else {
 					out[wid.x + width*wid.y] = brightness + brightness*256 + brightness*256*256;
+				}
+				if (is_overlay) {
+					out[wid.x + width*wid.y] = min(100 + brightness, 255);
 				}
 				if (u32(sceneData.debug_pixel[0]) == wid.x && u32(sceneData.debug_pixel[1]) == wid.y) {
 					out[wid.x + width*wid.y] = 0xFF00FF;
@@ -294,59 +334,7 @@ async function getRenderedImage(device, transform, triangle_data) {
 		entries : [{binding : 0, resource : {buffer : outDebugBuffer}}]
 	})
 	
-	function matrix_mult(A, v) {
-		let w = A[4][0]*v[0] + A[4][1]*v[1] + A[4][2]*v[2] + A[4][3]*v[3] + A[4][4]
-		
-		return [(A[0][0]*v[0] + A[0][1]*v[1] + A[0][2]*v[2] + A[0][3]*v[3] + A[0][4])/w,
-						(A[1][0]*v[0] + A[1][1]*v[1] + A[1][2]*v[2] + A[1][3]*v[3] + A[1][4])/w,
-						(A[2][0]*v[0] + A[2][1]*v[1] + A[2][2]*v[2] + A[2][3]*v[3] + A[2][4])/w,
-						(A[3][0]*v[0] + A[3][1]*v[1] + A[3][2]*v[2] + A[3][3]*v[3] + A[3][4])/w];
-	}
-	/*
-	const vertexA = matrix_mult(transform, [0.25, 0.25, 0.25, 0]);
-	const vertexB = matrix_mult(transform, [0.25, 0.25, -0.25, 0]);
-	const vertexC = matrix_mult(transform, [0.25, -0.25, 0.25, 0]);
-	const vertexD = matrix_mult(transform, [-0.25, 0.25, 0.25, 0]);
-	const vertexE = matrix_mult(transform, [0.25, 0.25, 0.25, 0.75]);
-	
-	
-	
-	var triangles = []
-	triangles = triangles.concat(vertexA, vertexB, vertexC);
-	triangles = triangles.concat(vertexA, vertexB, vertexD);
-	triangles = triangles.concat(vertexA, vertexB, vertexE);
-	triangles = triangles.concat(vertexA, vertexC, vertexD);
-	triangles = triangles.concat(vertexA, vertexC, vertexE);
-	triangles = triangles.concat(vertexA, vertexD, vertexE);
-	triangles = triangles.concat(vertexB, vertexC, vertexD);
-	triangles = triangles.concat(vertexB, vertexC, vertexE);
-	triangles = triangles.concat(vertexB, vertexD, vertexE);
-	triangles = triangles.concat(vertexC, vertexD, vertexE);
-	//console.log(triangles);
-	
-	var triangleInfo = [[7, 0, 1, 0],
-											[7, 0, 2, 0],
-											[7, 1, 2, 0],
-											[7, 0, 3, 0],
-											[7, 1, 3, 0],
-											[7, 2, 3, 0],
-											[7, 0, 4, 0],
-											[7, 1, 4, 0],
-											[7, 2, 4, 0],
-											[7, 3, 4, 0]]
-	*/
-	triangles = triangle_data[0].map( (t) => (t.map((v) => matrix_mult(transform, v))))
-	triangles = [].concat(...triangles)
-	triangles = [].concat(...triangles)
-	triangleInfo = [].concat(...triangle_data[1])
-	//console.log(triangles.length)
-	//console.log(triangleInfo.length)
-	const sceneData = [-2.0, 0.25, 0.25, 0.0,
-	                   0.125, 0.125, 0.125, -10.0,
-										 2.0, 0.0, 0.0, 0.0,
-										 0.0, 1.0/kTextureWidth, 0.0, 0.0,
-										 0.0, 0.0, 1.0/kTextureHeight, 0.0,
-										 Math.round(_debug_pointX), Math.round(_debug_pointY)]
+
 										 
 	device.queue.writeBuffer(triangleBuffer, 0, new Float32Array(triangles));
 	device.queue.writeBuffer(triangleInfoBuffer, 0, new Int32Array(triangleInfo));

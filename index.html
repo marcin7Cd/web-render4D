@@ -352,7 +352,7 @@ async function main() {
 		transform = mutiply_matrices5x5(transform, t);
 	}*/
 	const finalImage = (await getRenderedImage(device, transform,
-	object_to_render))[0];
+	object_to_render, translation_matrix([0,0,0,0])))[0];
 	device.queue.writeTexture(
       { texture },
       finalImage,
@@ -414,6 +414,33 @@ async function main() {
 	then = 0;
 	var cur_transformation = rotation_matrix(12, 1, 2);
 	var motion_transformation = translation_matrix([0,0,0,0]);
+
+	var indicator_yz_angle = 0;
+	var indicator_xy_angle = 0;
+	var ind_yz_rotatation = 0;
+	var ind_xy_rotatation = 0;
+	document.addEventListener("keydown", (e) => {
+		console.log([e.key, "keydown"])
+		if(e.key == "r") {ind_yz_rotatation = 1;}
+		if(e.key == "f") {ind_yz_rotatation = -1;}
+		if(e.key == "g") {ind_xy_rotatation = 1;}
+		if(e.key == "d") {ind_xy_rotatation = -1;}
+	})
+
+	document.addEventListener("keyup", (e) => {
+		console.log([e.key, "keyup"])
+		if(e.key == "r" || e.key == "f") {ind_yz_rotatation = 0;}
+		if(e.key == "g" || e.key == "d") {ind_xy_rotatation = 0;}
+	})
+
+	document.addEventListener("blur", (e) => { //if you switch tabs the keyup event will not fire
+		ind_xy_rotatation = 0;
+		ind_yz_rotatation = 0;
+	})
+	window.addEventListener("blur", (e) => { //if you switch tabs the keyup event will not fire
+		ind_xy_rotatation = 0;
+		ind_yz_rotatation = 0;
+	})
 	
 
   function draw_segments(points) {
@@ -438,6 +465,11 @@ async function main() {
 		context.stroke();
 	}
   }
+  function clamp (x, a, b) {
+	if (x > a) {return a;}
+	if (x < b) {return b;}
+	return x;
+  }
 
   async function render(now) {
 	
@@ -447,6 +479,8 @@ async function main() {
 		return;
 	}
 	diff = now - then;
+	indicator_xy_angle += diff * ind_xy_rotatation;
+	indicator_yz_angle = clamp(indicator_yz_angle - diff * ind_yz_rotatation, Math.PI/2, -Math.PI/2);
 	then = now;
 	var _temp = mutiply_matrices5x5(rotation_matrix((-rotate_yz*90*diff)*Math.PI/180,0,2), 
 															rotation_matrix((rotate_xy*90*diff)*Math.PI/180,0,1))
@@ -469,7 +503,11 @@ async function main() {
 		cur_transformation = mutiply_matrices5x5(cur_transformation, t);
 	}
 	const final_transformation = mutiply_matrices5x5(transform_at_origin(motion_transformation), cur_transformation);
-	const renderData = await getRenderedImage(device, final_transformation, object_to_render);
+
+	const indicator_transformation = transform_at_origin(mutiply_matrices5x5(rotation_matrix(indicator_xy_angle, 0, 1),
+                                                         rotation_matrix(indicator_yz_angle, 1, 2)));
+
+	const renderData = await getRenderedImage(device, final_transformation, object_to_render, indicator_transformation);
 	const finalImage = renderData[0];
 	const debugSegments = renderData[1];
 	draw_segments(debugSegments);
