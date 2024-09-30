@@ -241,7 +241,7 @@ async function getRenderedImage(device, transform, triangle_data, indicator_tran
 			workgroupBarrier();
 			if (lid.x == 0) {
 				//let alpha = 1 - pow(0.9, f32(atomicLoad(&number_of_barriers)));
-				let alpha = f32(atomicLoad(&number_of_barriers))/10;
+				let alpha = 1 - f32(atomicLoad(&number_of_barriers))/20;
 				let brightness = u32(alpha*100);
 				if (is_on_edge){
 					out[wid.x + width*wid.y] = brightness;
