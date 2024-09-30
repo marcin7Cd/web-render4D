@@ -321,6 +321,14 @@ async function main() {
 		}
 		return resM
 	}
+
+	function compose_transformations(transformations) {
+		let result = translation_matrix([0,0,0,0])
+		for (let i=0; i < transformations.length; i++) {
+			result = mutiply_matrices5x5(result, transformations[i])
+		}
+		return result
+	}
 	
 	function translation_matrix(p) {
 		return [[1,0,0,0,p[0]],
@@ -382,21 +390,9 @@ async function main() {
     ],
   };
 	var run_animation = true;
-	var rotate_zt = 0.0;
-	var rotate_xt = 0.0;
-	var rotate_yt = 0.0;
 	function check_pause (e) {
 		if (e.key == "p") {
 			run_animation = !run_animation;
-		}
-		if (e.key == "w") {
-			rotate_zt =  1 - rotate_zt;
-		}
-		if (e.key == "e") {
-			rotate_xt =  1 - rotate_xt;
-		}
-		if (e.key == "q") {
-			rotate_yt = 1 -rotate_yt;
 		}
 	}
 	document.addEventListener("keydown", check_pause)
@@ -412,34 +408,40 @@ async function main() {
 	})
 	
 	then = 0;
-	var cur_transformation = rotation_matrix(12, 1, 2);
 	var motion_transformation = translation_matrix([0,0,0,0]);
+	var motion4D_transformation = translation_matrix([0,0,0,0]);
 
 	var indicator_yz_angle = 0;
 	var indicator_xy_angle = 0;
 	var ind_yz_rotatation = 0;
 	var ind_xy_rotatation = 0;
+	var ind_4D_rotation = 0;
 	document.addEventListener("keydown", (e) => {
 		console.log([e.key, "keydown"])
 		if(e.key == "r") {ind_yz_rotatation = 1;}
 		if(e.key == "f") {ind_yz_rotatation = -1;}
 		if(e.key == "g") {ind_xy_rotatation = 1;}
 		if(e.key == "d") {ind_xy_rotatation = -1;}
+		if(e.key == "c") {ind_4D_rotation = 1;}
+		if(e.key == "v") {ind_4D_rotation = -1;}
 	})
 
 	document.addEventListener("keyup", (e) => {
 		console.log([e.key, "keyup"])
 		if(e.key == "r" || e.key == "f") {ind_yz_rotatation = 0;}
 		if(e.key == "g" || e.key == "d") {ind_xy_rotatation = 0;}
+		if(e.key == "c" || e.key == "v") {ind_4D_rotation = 0;}
 	})
 
 	document.addEventListener("blur", (e) => { //if you switch tabs the keyup event will not fire
 		ind_xy_rotatation = 0;
 		ind_yz_rotatation = 0;
+		ind_4D_rotation = 0;
 	})
 	window.addEventListener("blur", (e) => { //if you switch tabs the keyup event will not fire
 		ind_xy_rotatation = 0;
 		ind_yz_rotatation = 0;
+		ind_4D_rotation = 0;
 	})
 	
 
@@ -482,32 +484,39 @@ async function main() {
 	indicator_xy_angle += diff * ind_xy_rotatation;
 	indicator_yz_angle = clamp(indicator_yz_angle - diff * ind_yz_rotatation, Math.PI/2, -Math.PI/2);
 	then = now;
-	var _temp = mutiply_matrices5x5(rotation_matrix((-rotate_yz*90*diff)*Math.PI/180,0,2), 
-															rotation_matrix((rotate_xy*90*diff)*Math.PI/180,0,1))
-	motion_transformation = mutiply_matrices5x5(_temp, motion_transformation)
-	
+
 	function transform_at_origin(transformation) {
 		return mutiply_matrices5x5(translation_matrix([0.25, 0.25, 0.25, 0.25]), 
 					 mutiply_matrices5x5(transformation, translation_matrix([-0.25, -0.25, -0.25, -0.25])) )
 	}
-	
-	const transformations = [translation_matrix([0.25, 0.25, 0.25, 0.25]),
-													 //rotation_matrix((rotate_xy*90*diff)*Math.PI/180, 0, 1),
-													 //rotation_matrix((rotate_xz*90*diff)*Math.PI/180, 0, 2),
-													 rotation_matrix((rotate_zt*90*diff)*Math.PI/180, 2, 3),
-													 rotation_matrix((rotate_yt*90*diff)*Math.PI/180, 1, 3),
-													 rotation_matrix((rotate_xt*90*diff)*Math.PI/180, 0, 3),
-													 translation_matrix([-0.25, -0.25, -0.25, -0.25])]
-										
-	for (t of transformations) {
-		cur_transformation = mutiply_matrices5x5(cur_transformation, t);
-	}
-	const final_transformation = mutiply_matrices5x5(transform_at_origin(motion_transformation), cur_transformation);
 
 	const indicator_transformation = transform_at_origin(mutiply_matrices5x5(rotation_matrix(indicator_xy_angle, 0, 1),
                                                          rotation_matrix(indicator_yz_angle, 1, 2)));
+	
+	const indicator_transformation_inv = transform_at_origin(mutiply_matrices5x5(rotation_matrix(-indicator_yz_angle, 1, 2),
+	                                                         rotation_matrix(-indicator_xy_angle, 0, 1)));
 
-	const renderData = await getRenderedImage(device, final_transformation, object_to_render, indicator_transformation);
+													
+	const mouse_rotation = mutiply_matrices5x5(rotation_matrix((-rotate_yz*90*diff)*Math.PI/180,0,2),
+	                                           rotation_matrix((rotate_xy*90*diff)*Math.PI/180,0,1))
+
+	motion_transformation = compose_transformations([
+		transform_at_origin(mouse_rotation),
+		motion_transformation
+	]);
+
+	motion4D_transformation = compose_transformations([
+		indicator_transformation,
+		transform_at_origin(rotation_matrix(90*diff*Math.PI/180*ind_4D_rotation, 1,3)),
+		indicator_transformation_inv,
+		motion4D_transformation
+	])
+	
+	const final_transformation = mutiply_matrices5x5(motion_transformation, motion4D_transformation);
+
+	const renderData = await getRenderedImage(device, final_transformation, object_to_render, 
+										compose_transformations([motion_transformation,
+										                         indicator_transformation]));
 	const finalImage = renderData[0];
 	const debugSegments = renderData[1];
 	draw_segments(debugSegments);
