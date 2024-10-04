@@ -204,7 +204,14 @@ async function getRenderedImage(device, transform, triangle_data, indicator_tran
 			//if cell_intersections_count is positive that means that cell intersected with RayPlane
 			
 			var is_blocked : bool = false;
-			//I HAVE TO CHECK IF INTERSECTION EXISTS
+			if (lid.x < ${cell_count} && atomicLoad(&cell_intersections_count[lid.x]) > 1) {
+				if (intersections[2*lid.x].slope >= intersections[2*lid.x + 1].slope) {
+					var _tmp = intersections[2*lid.x + 1];
+					intersections[2*lid.x + 1] = intersections[2*lid.x];
+					intersections[2*lid.x] = _tmp;
+				}
+			}
+			workgroupBarrier();
 			if (lid.x < ${cell_count*2} && atomicLoad(&cell_intersections_count[lid.x / 2]) > (lid.x % 2)) {
 				let vis = intersections[lid.x].visibility;
 				let p_slope = intersections[lid.x].slope;
@@ -213,17 +220,13 @@ async function getRenderedImage(device, transform, triangle_data, indicator_tran
 				
 				for (var cell : u32 = 0; cell < ${cell_count}; cell+=1) { //iterate over segments and check if cur point is blocked
 					if (atomicLoad(&cell_intersections_count[cell]) > 1) {
-						var k : u32 = 2*cell;
-						if(intersections[2*cell].slope >= intersections[2*cell + 1].slope){
-							k = 2*cell + 1;
-						}
-						if (intersections[k].slope <= p_slope && p_slope <= intersections[k ^ 1].slope){
-							if ((intersections[k ^ 1].x - intersections[k].x) * (p_y - intersections[k].y) -
-									(intersections[k ^ 1].y - intersections[k].y) * (p_x - intersections[k].x) > 0)
-								{
-									is_blocked = true;
-									break;
-								}
+						var k = 2*cell;
+						var is_above = intersections[k].slope <= p_slope && p_slope <= intersections[k + 1].slope &&
+											(intersections[k + 1].x - intersections[k].x) * (p_y - intersections[k].y) -
+											(intersections[k + 1].y - intersections[k].y) * (p_x - intersections[k].x) > 0;
+						if (is_above){
+							is_blocked = true;
+							break;
 						}
 					}
 				}
