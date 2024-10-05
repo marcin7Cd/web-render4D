@@ -97,8 +97,11 @@ async function getRenderedImage(device, transform, triangle_data, indicator_tran
 		
 		var<workgroup> outTriangles : array<TriangleTemp, ${triangle_count}>;
 		var<workgroup> intersections : array<RayPointData, ${2*cell_count}>;
+		var<workgroup> is_x_above_y : array<array<atomic<u32>, ${Math.ceil(cell_count/32)}>, ${cell_count}>;
+		var<workgroup> is_visible : array<atomic<u32>, ${Math.ceil(2*2*cell_count/32)}>;
 		var<workgroup> cell_intersections_count : array<atomic<u32>, ${cell_count}>;
 		var<workgroup> number_of_barriers : atomic<u32>;
+		var<workgroup> seen_thickness : atomic<u32>;
 		const width = ${kTextureWidth};
 		
 				fn cramer_dets(a : mat4x4<f32>, b : vec4<f32>) -> vec4f {
@@ -145,6 +148,14 @@ async function getRenderedImage(device, transform, triangle_data, indicator_tran
 			//	out[wid.x + width*wid.y] = 123456;
 			//}
 			}
+		}
+		
+		fn check_is_visible(point_id : u32) -> bool {
+			return (atomicLoad(&is_visible[point_id/32]) & (1u << (point_id % 32))) > 0;
+		}
+
+		fn check_is_above(x : u32, y : u32) -> bool {
+			return (atomicLoad(&is_x_above_y[x][y/32]) & (1u << (y % 32) )) > 0;
 		}
 		var<workgroup> is_on_edge : bool;
 		var<workgroup> is_overlay : bool;
@@ -205,7 +216,7 @@ async function getRenderedImage(device, transform, triangle_data, indicator_tran
 			
 			var is_blocked : bool = false;
 			if (lid.x < ${cell_count} && atomicLoad(&cell_intersections_count[lid.x]) > 1) {
-				if (intersections[2*lid.x].slope >= intersections[2*lid.x + 1].slope) {
+				if (intersections[2*lid.x].slope > intersections[2*lid.x + 1].slope) {
 					var _tmp = intersections[2*lid.x + 1];
 					intersections[2*lid.x + 1] = intersections[2*lid.x];
 					intersections[2*lid.x] = _tmp;
@@ -226,11 +237,12 @@ async function getRenderedImage(device, transform, triangle_data, indicator_tran
 											(intersections[k + 1].y - intersections[k].y) * (p_x - intersections[k].x) > 0;
 						if (is_above){
 							is_blocked = true;
-							break;
+							atomicOr(&is_x_above_y[lid.x/2][cell/32], (1u << (cell%32)));
 						}
 					}
 				}
 				
+				if(!is_blocked) {atomicOr(&is_visible[lid.x/32], 1u << (lid.x%32));}
 				
 				if (!is_blocked) {
 					if (vis >= 0) {
@@ -242,10 +254,53 @@ async function getRenderedImage(device, transform, triangle_data, indicator_tran
 				}
 			}
 			workgroupBarrier();
+			// calculates visible width of segments
+			if ((lid.x < ${2*cell_count}) && (atomicLoad(&cell_intersections_count[lid.x/2]) == 2) &&
+			    check_is_visible(lid.x)) {
+				var visible_width : f32 = 0;
+				var cur_slope = intersections[lid.x].slope;
+				if (lid.x % 2 == 0) { //The leftward point of segment
+					var best_slope = intersections[lid.x + 1].slope; // if the right end was not visible this would imply existence of better point closer
+					for (var i : u32 = 0; i < ${cell_count}; i++) {
+						if (check_is_above(lid.x/2, i) && check_is_visible(i*2)) {
+							var tmp_slope = intersections[2*i].slope;
+							if (cur_slope <= tmp_slope && tmp_slope < best_slope) {best_slope = tmp_slope;}
+						} 
+					}
+					visible_width = (best_slope - cur_slope); //TODO: uses it for calculating color
+				} else { // The rightward edge of segment
+				  //find lowest segment
+				  var lowest_segment : i32 = -1;
+				  for (var seg : u32 = 0; seg < ${cell_count}; seg++) {
+				    if ( (atomicLoad(&cell_intersections_count[seg]) > 1) &&
+					     (intersections[2*seg].slope < cur_slope) && 
+					     (cur_slope < intersections[2*seg + 1].slope)) {
+					  if (lowest_segment == -1) {lowest_segment = i32(seg);}
+					  if (check_is_above(u32(lowest_segment), seg)) { //TODO: check if this is correct
+					    lowest_segment = i32(seg);
+	                  }
+					} 
+				  }
+				  if (lowest_segment != -1) {
+				  //find closest point
+					var best_slope = intersections[lowest_segment*2 + 1].slope; // if the right end was not visible this would imply existence of better point closer
+					for (var i : u32 = 0; i < ${cell_count}; i++) {
+						if (check_is_visible(i*2)) {
+							var tmp_slope = intersections[2*i].slope;
+							if (cur_slope <= tmp_slope && tmp_slope < best_slope) {best_slope = tmp_slope;}
+						} 
+					}
+					visible_width = (best_slope - cur_slope)/2; //I assume that each point is attached to 2 segments
+	              }
+				} 
+				atomicAdd(&seen_thickness, u32(100000*visible_width));
+			}
+			workgroupBarrier();
 			if (lid.x == 0) {
 				//let alpha = 1 - pow(0.9, f32(atomicLoad(&number_of_barriers)));
-				let alpha = 1 - f32(atomicLoad(&number_of_barriers))/20;
-				let brightness = u32(alpha*100);
+				//let alpha = 1 - f32(atomicLoad(&number_of_barriers))/20;
+				//let brightness = u32(alpha*100);
+				let brightness = u32(clamp(100 - i32(atomicLoad(&seen_thickness)/2000), 0, 100));
 				if (is_on_edge){
 					out[wid.x + width*wid.y] = brightness;
 				} else {
