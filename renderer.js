@@ -34,6 +34,7 @@ async function getRenderedImage(device, transform, triangle_data, indicator_tran
 	triangleInfo.push([cell_count+1, 0, 7+16, 0])
 	
 	triangleInfo = [].concat(...triangleInfo)
+	cellInfo = triangle_data[2];
 	//console.log(triangles)
 	//triangles.push([[0, 0, 0, 0], [0, 0.5, 0, 1], [0, 0.5, 0, 1]])
 	//triangleInfo.push([cell_count-6, 0, 7+16, 0])
@@ -94,6 +95,7 @@ async function getRenderedImage(device, transform, triangle_data, indicator_tran
 		@group(0) @binding(2) var<storage, read> trianglesInfo : array<TriangleMetaData>;
 		@group(0) @binding(3) var<uniform> sceneData : SceneData;
 		@group(1) @binding(0) var<storage, read_write> out_debug : array<vec2<f32>>;
+		@group(1) @binding(1) var<storage, read> cell_color : array<u32>;
 		
 		var<workgroup> outTriangles : array<TriangleTemp, ${triangle_count}>;
 		var<workgroup> intersections : array<RayPointData, ${2*cell_count}>;
@@ -101,7 +103,7 @@ async function getRenderedImage(device, transform, triangle_data, indicator_tran
 		var<workgroup> is_visible : array<atomic<u32>, ${Math.ceil(2*2*cell_count/32)}>;
 		var<workgroup> cell_intersections_count : array<atomic<u32>, ${cell_count}>;
 		var<workgroup> number_of_barriers : atomic<u32>;
-		var<workgroup> seen_thickness : atomic<u32>;
+		var<workgroup> seen_thickness : array<atomic<u32>, 3>; //one for each channel
 		const width = ${kTextureWidth};
 		
 				fn cramer_dets(a : mat4x4<f32>, b : vec4<f32>) -> vec4f {
@@ -156,6 +158,13 @@ async function getRenderedImage(device, transform, triangle_data, indicator_tran
 
 		fn check_is_above(x : u32, y : u32) -> bool {
 			return (atomicLoad(&is_x_above_y[x][y/32]) & (1u << (y % 32) )) > 0;
+		}
+
+		fn darken_by_color(thickness : f32, segment : u32) {
+			var factor : f32 = 1000 * thickness /256;
+			atomicAdd(&seen_thickness[0], u32(factor * f32(extractBits(cell_color[segment], 0, 8))));
+			atomicAdd(&seen_thickness[1], u32(factor * f32(extractBits(cell_color[segment], 8, 8))));
+			atomicAdd(&seen_thickness[2], u32(factor * f32(extractBits(cell_color[segment], 16, 8))));
 		}
 		var<workgroup> is_on_edge : bool;
 		var<workgroup> is_overlay : bool;
@@ -267,7 +276,8 @@ async function getRenderedImage(device, transform, triangle_data, indicator_tran
 							if (cur_slope <= tmp_slope && tmp_slope < best_slope) {best_slope = tmp_slope;}
 						} 
 					}
-					visible_width = (best_slope - cur_slope); //TODO: uses it for calculating color
+					visible_width = best_slope - cur_slope;
+					darken_by_color(visible_width, lid.x/2);
 				} else { // The rightward edge of segment
 				  //find lowest segment
 				  var lowest_segment : i32 = -1;
@@ -291,20 +301,23 @@ async function getRenderedImage(device, transform, triangle_data, indicator_tran
 						} 
 					}
 					visible_width = (best_slope - cur_slope)/2; //I assume that each point is attached to 2 segments
+					darken_by_color(visible_width, u32(lowest_segment));
 	              }
 				} 
-				atomicAdd(&seen_thickness, u32(100000*visible_width));
 			}
 			workgroupBarrier();
 			if (lid.x == 0) {
 				//let alpha = 1 - pow(0.9, f32(atomicLoad(&number_of_barriers)));
 				//let alpha = 1 - f32(atomicLoad(&number_of_barriers))/20;
 				//let brightness = u32(alpha*100);
-				let brightness = u32(clamp(100 - i32(atomicLoad(&seen_thickness)/2000), 0, 100));
+				let brightness0 = u32(clamp(100 - i32(atomicLoad(&seen_thickness[0])/5), 0, 100));
+				let brightness1 = u32(clamp(100 - i32(atomicLoad(&seen_thickness[1])/5), 0, 100));
+				let brightness2 = u32(clamp(100 - i32(atomicLoad(&seen_thickness[2])/5), 0, 100));
+				let brightness = (brightness0 + brightness1 + brightness2)/3;
 				if (is_on_edge){
 					out[wid.x + width*wid.y] = brightness;
 				} else {
-					out[wid.x + width*wid.y] = brightness + brightness*256 + brightness*256*256;
+					out[wid.x + width*wid.y] = brightness0 + brightness1*256 + brightness2*256*256;
 				}
 				if (is_overlay) {
 					out[wid.x + width*wid.y] = min(100 + brightness, 255);
@@ -355,6 +368,12 @@ async function getRenderedImage(device, transform, triangle_data, indicator_tran
 		usage : GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
 	});
 
+	const cellInfoBuffer = device.createBuffer({
+		label : 'cells',
+		size : (3*cell_count)*4,
+		usage : GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+	});
+
 	const outDebugBuffer = device.createBuffer({
 		label : 'outDebug',
 		size  : (2*cell_count)*2*4,
@@ -389,7 +408,10 @@ async function getRenderedImage(device, transform, triangle_data, indicator_tran
 	});
 	const bindGroup3 = device.createBindGroup({
 		layout : computePipeline.getBindGroupLayout(1),
-		entries : [{binding : 0, resource : {buffer : outDebugBuffer}}]
+		entries : [
+			{binding : 0, resource : {buffer : outDebugBuffer}},
+			{binding : 1, resource : {buffer : cellInfoBuffer}}
+		]
 	})
 	
 
@@ -397,7 +419,8 @@ async function getRenderedImage(device, transform, triangle_data, indicator_tran
 	device.queue.writeBuffer(triangleBuffer, 0, new Float32Array(triangles));
 	device.queue.writeBuffer(triangleInfoBuffer, 0, new Int32Array(triangleInfo));
 	device.queue.writeBuffer(sceneBuffer, 0, new Float32Array(sceneData));
-	
+	device.queue.writeBuffer(cellInfoBuffer, 0, new Uint32Array(cellInfo));
+
 	const encoder = device.createCommandEncoder({label : 'compute builtin encoder'});
 	const pass = encoder.beginComputePass({label : 'compute builtin pass'});
 	
