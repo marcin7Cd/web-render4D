@@ -162,9 +162,9 @@ async function getRenderedImage(device, transform, triangle_data, indicator_tran
 
 		fn darken_by_color(thickness : f32, segment : u32) {
 			var factor : f32 = 1000 * thickness /256;
-			atomicAdd(&seen_thickness[0], u32(factor * f32(extractBits(cell_color[segment], 0, 8))));
-			atomicAdd(&seen_thickness[1], u32(factor * f32(extractBits(cell_color[segment], 8, 8))));
-			atomicAdd(&seen_thickness[2], u32(factor * f32(extractBits(cell_color[segment], 16, 8))));
+			atomicAdd(&seen_thickness[0], u32(factor * (255 - f32(extractBits(cell_color[segment], 16, 8)))));
+			atomicAdd(&seen_thickness[1], u32(factor * (255 - f32(extractBits(cell_color[segment], 8, 8)))));
+			atomicAdd(&seen_thickness[2], u32(factor * (255 - f32(extractBits(cell_color[segment], 0, 8)))));
 		}
 		var<workgroup> is_on_edge : bool;
 		var<workgroup> is_overlay : bool;
@@ -278,7 +278,7 @@ async function getRenderedImage(device, transform, triangle_data, indicator_tran
 					}
 					visible_width = best_slope - cur_slope;
 					darken_by_color(visible_width, lid.x/2);
-				} else { // The rightward edge of segment
+				} /*else { // The rightward edge of segment
 				  //find lowest segment
 				  var lowest_segment : i32 = -1;
 				  for (var seg : u32 = 0; seg < ${cell_count}; seg++) {
@@ -303,21 +303,21 @@ async function getRenderedImage(device, transform, triangle_data, indicator_tran
 					visible_width = (best_slope - cur_slope)/2; //I assume that each point is attached to 2 segments
 					darken_by_color(visible_width, u32(lowest_segment));
 	              }
-				} 
+				}*/ 
 			}
 			workgroupBarrier();
 			if (lid.x == 0) {
 				//let alpha = 1 - pow(0.9, f32(atomicLoad(&number_of_barriers)));
 				//let alpha = 1 - f32(atomicLoad(&number_of_barriers))/20;
 				//let brightness = u32(alpha*100);
-				let brightness0 = u32(clamp(100 - i32(atomicLoad(&seen_thickness[0])/5), 0, 100));
-				let brightness1 = u32(clamp(100 - i32(atomicLoad(&seen_thickness[1])/5), 0, 100));
-				let brightness2 = u32(clamp(100 - i32(atomicLoad(&seen_thickness[2])/5), 0, 100));
-				let brightness = (brightness0 + brightness1 + brightness2)/3;
+				let brightnessR = u32(clamp(100 - i32(atomicLoad(&seen_thickness[0])/5), 0, 100));
+				let brightnessG = u32(clamp(100 - i32(atomicLoad(&seen_thickness[1])/5), 0, 100));
+				let brightnessB = u32(clamp(100 - i32(atomicLoad(&seen_thickness[2])/5), 0, 100));
+				let brightness = (brightnessR + brightnessG + brightnessB)/3;
 				if (is_on_edge){
 					out[wid.x + width*wid.y] = brightness;
 				} else {
-					out[wid.x + width*wid.y] = brightness0 + brightness1*256 + brightness2*256*256;
+					out[wid.x + width*wid.y] = brightnessB*256*256 + brightnessG*256 + brightnessR;
 				}
 				if (is_overlay) {
 					out[wid.x + width*wid.y] = min(100 + brightness, 255);
