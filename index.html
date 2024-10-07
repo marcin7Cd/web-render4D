@@ -469,9 +469,13 @@ async function main() {
 	context.clearRect(0, 0, canvas.width, canvas.height);
 	for (let i = 0; i < N/4; i++) {
 		context.beginPath();
+		if (i < object_to_render[2].length) {
+			context.strokeStyle = `#${object_to_render[2][i].toString(16).padStart(6, '0')}`
+		} else {
+			context.strokeStyle = '#ffffff'
+		}
 		context.moveTo(...debug_transformation(points[4*i + 0],points[4*i + 1]));  // Move to start point
 		context.lineTo(...debug_transformation(points[4*i + 2],points[4*i + 3]));  // Move to start point
-		context.strokeStyle = 'black';  // Set line color
 		context.lineWidth = 2;  // Set line width
 		context.stroke();  // Draw the actual line	
 	}
