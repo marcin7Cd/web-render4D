@@ -326,13 +326,10 @@ async function getRenderedImage(device, transform, triangle_data, indicator_tran
 					out[wid.x + width*wid.y] = 0xFF00FF;
 					var position = 0;
 					for (var k = 0; k < ${cell_count}; k += 1) {
-						if (atomicLoad(&cell_intersections_count[k]) > 0) {
-							out_debug[position*2][0] = intersections[k*2].x;
-							out_debug[position*2][1] = intersections[k*2].y;
-							out_debug[position*2 + 1][0] = intersections[k*2 + 1].x;
-							out_debug[position*2 + 1][1] = intersections[k*2 + 1].y;
-							position += 1;
-						}
+						out_debug[k*2][0] = intersections[k*2].x;
+						out_debug[k*2][1] = intersections[k*2].y;
+						out_debug[k*2 + 1][0] = intersections[k*2 + 1].x;
+						out_debug[k*2 + 1][1] = intersections[k*2 + 1].y;
 					}
 				}
 			}
