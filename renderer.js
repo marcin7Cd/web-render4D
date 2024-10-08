@@ -241,12 +241,17 @@ async function getRenderedImage(device, transform, triangle_data, indicator_tran
 				for (var cell : u32 = 0; cell < ${cell_count}; cell+=1) { //iterate over segments and check if cur point is blocked
 					if (atomicLoad(&cell_intersections_count[cell]) > 1) {
 						var k = 2*cell;
-						var is_above = intersections[k].slope <= p_slope && p_slope <= intersections[k + 1].slope &&
-											(intersections[k + 1].x - intersections[k].x) * (p_y - intersections[k].y) -
-											(intersections[k + 1].y - intersections[k].y) * (p_x - intersections[k].x) > 0;
-						if (is_above){
+						var is_in_range = intersections[k].slope <= p_slope && p_slope <= intersections[k + 1].slope;
+						var is_above = (intersections[k + 1].x - intersections[k].x) * (p_y - intersections[k].y) -
+									   (intersections[k + 1].y - intersections[k].y) * (p_x - intersections[k].x) > 0;
+						var is_below = (intersections[k + 1].x - intersections[k].x) * (p_y - intersections[k].y) -
+									   (intersections[k + 1].y - intersections[k].y) * (p_x - intersections[k].x) < 0;
+						if (is_in_range && is_above){
 							is_blocked = true;
 							atomicOr(&is_x_above_y[lid.x/2][cell/32], (1u << (cell%32)));
+						}
+						if (is_in_range && is_below) {
+							atomicOr(&is_x_above_y[cell][(lid.x/2)/32], (1u << ((lid.x/2)%32)));
 						}
 					}
 				}
@@ -278,7 +283,7 @@ async function getRenderedImage(device, transform, triangle_data, indicator_tran
 					}
 					visible_width = best_slope - cur_slope;
 					darken_by_color(visible_width, lid.x/2);
-				} /*else { // The rightward edge of segment
+				} else { // The rightward edge of segment
 				  //find lowest segment
 				  var lowest_segment : i32 = -1;
 				  for (var seg : u32 = 0; seg < ${cell_count}; seg++) {
@@ -303,7 +308,7 @@ async function getRenderedImage(device, transform, triangle_data, indicator_tran
 					visible_width = (best_slope - cur_slope)/2; //I assume that each point is attached to 2 segments
 					darken_by_color(visible_width, u32(lowest_segment));
 	              }
-				}*/ 
+				} 
 			}
 			workgroupBarrier();
 			if (lid.x == 0) {

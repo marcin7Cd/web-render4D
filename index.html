@@ -476,7 +476,7 @@ async function main() {
 		}
 		context.moveTo(...debug_transformation(points[4*i + 0],points[4*i + 1]));  // Move to start point
 		context.lineTo(...debug_transformation(points[4*i + 2],points[4*i + 3]));  // Move to start point
-		context.lineWidth = 4;  // Set line width
+		context.lineWidth = 2;  // Set line width
 		context.stroke();  // Draw the actual line	
 	}
 	for (let i = 0; i < 30; i++) {
