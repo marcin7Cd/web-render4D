@@ -22,7 +22,10 @@
 
 <body>
 		<p>Experimental 4D rendering of a hypercube with occlucions. <b>Works only with GPU and a browsers with webGPU.</b></p>
-	<p>Choose object to render <select id="object selector"></select></p>
+	<p>Choose object to render <select id="object selector"></select> 
+		<input type="checkbox" id="checkbox-lower-4Dframerate"></input> 
+		lower 4D framerate (improves spacial understanding of 4D rotation)
+	</p>
 	<div class="canvas-container">
     	<canvas id="gpuCanvas" width=600 height=600></canvas>
 		<canvas id="debugCanvas" width=600 height="600"></canvas>
@@ -478,6 +481,7 @@
 </script>
 <script>
 
+document.querySelector("#checkbox-lower-4Dframerate").checked = false;
 function from_binary(text) {
 	exp = 1
 	sum = 0
@@ -826,8 +830,10 @@ async function main() {
 	return x;
   }
 
+  var frame_id = 0;
+  var then4D = 0;
   async function render(now) {
-	
+	frame_id += 1;
 	now = now*0.001
 	if (! run_animation) {
 		requestAnimationFrame(render);
@@ -837,6 +843,11 @@ async function main() {
 	indicator_xy_angle += diff * ind_xy_rotatation;
 	indicator_yz_angle = clamp(indicator_yz_angle - diff * ind_yz_rotatation, Math.PI/2, -Math.PI/2);
 	then = now;
+	diff4D = 0;
+	if (!document.querySelector("#checkbox-lower-4Dframerate").checked || frame_id % 3 == 0) {
+		diff4D = now - then4D;
+		then4D = now;
+	}
 
 	function transform_at_origin(transformation) {
 		return mutiply_matrices5x5(translation_matrix([0.25, 0.25, 0.25, 0.25]), 
@@ -860,7 +871,7 @@ async function main() {
 
 	motion4D_transformation = compose_transformations([
 		indicator_transformation,
-		transform_at_origin(rotation_matrix(90*diff*Math.PI/180*ind_4D_rotation, 1,3)),
+		transform_at_origin(rotation_matrix(90*diff4D*Math.PI/180*ind_4D_rotation, 1,3)),
 		indicator_transformation_inv,
 		motion4D_transformation
 	])
