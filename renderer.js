@@ -168,6 +168,8 @@ async function getRenderedImage(device, transform, triangle_data, indicator_tran
 		}
 		var<workgroup> is_on_edge : bool;
 		var<workgroup> is_overlay : bool;
+		var<workgroup> closest_point : atomic<i32>;
+		var<workgroup> closest_overlay :  atomic<i32>;
 		@compute @workgroup_size(${triangle_count}) 
 		fn computeStuff(@builtin(local_invocation_id) lid : vec3<u32>,
 		@builtin(workgroup_id) wid : vec3<u32>,
@@ -196,6 +198,7 @@ async function getRenderedImage(device, transform, triangle_data, indicator_tran
 					is_edge = (((outTriangles[lid.x].visibility & 2)>0) && p_u < weight) ||
 									  (((outTriangles[lid.x].visibility & 1)>0) && p_v < weight) ||
 										(((outTriangles[lid.x].visibility & 4)>0) && p_u + p_v > 1 -weight);
+					is_edge = is_edge && ((outTriangles[lid.x].visibility & 16) == 0);
 					
 					//if (is_edge) {
 					//	is_on_edge = true;
@@ -207,7 +210,10 @@ async function getRenderedImage(device, transform, triangle_data, indicator_tran
 					}
 					//check if the triangle should be flush (i.e. not counted as boundary)
 					if ((outTriangles[lid.x].visibility & 16) > 0) {
-					   is_overlay = true;
+						is_overlay = true;
+						atomicMin(&closest_overlay, i32(100000*(p_x/p_y -10) )); // ASSUMPTION: p_x/p_y is below 10 
+					} else {
+						atomicMin(&closest_point, i32(100000*(p_x/p_y - 10) )); // ASSUMPTION: p_x/p_y is below 10
 					}
 					if ((outTriangles[lid.x].visibility & 8) > 0) { 
 						vis = -1.0;
@@ -241,12 +247,17 @@ async function getRenderedImage(device, transform, triangle_data, indicator_tran
 				for (var cell : u32 = 0; cell < ${cell_count}; cell+=1) { //iterate over segments and check if cur point is blocked
 					if (atomicLoad(&cell_intersections_count[cell]) > 1) {
 						var k = 2*cell;
-						var is_above = intersections[k].slope <= p_slope && p_slope <= intersections[k + 1].slope &&
-											(intersections[k + 1].x - intersections[k].x) * (p_y - intersections[k].y) -
-											(intersections[k + 1].y - intersections[k].y) * (p_x - intersections[k].x) > 0;
-						if (is_above){
+						var is_in_range = intersections[k].slope <= p_slope && p_slope <= intersections[k + 1].slope;
+						var is_above = (intersections[k + 1].x - intersections[k].x) * (p_y - intersections[k].y) -
+									   (intersections[k + 1].y - intersections[k].y) * (p_x - intersections[k].x) > 0;
+						var is_below = (intersections[k + 1].x - intersections[k].x) * (p_y - intersections[k].y) -
+									   (intersections[k + 1].y - intersections[k].y) * (p_x - intersections[k].x) < 0;
+						if (is_in_range && is_above){
 							is_blocked = true;
 							atomicOr(&is_x_above_y[lid.x/2][cell/32], (1u << (cell%32)));
+						}
+						if (is_in_range && is_below) {
+							atomicOr(&is_x_above_y[cell][(lid.x/2)/32], (1u << ((lid.x/2)%32)));
 						}
 					}
 				}
@@ -278,7 +289,7 @@ async function getRenderedImage(device, transform, triangle_data, indicator_tran
 					}
 					visible_width = best_slope - cur_slope;
 					darken_by_color(visible_width, lid.x/2);
-				} /*else { // The rightward edge of segment
+				} else { // The rightward edge of segment
 				  //find lowest segment
 				  var lowest_segment : i32 = -1;
 				  for (var seg : u32 = 0; seg < ${cell_count}; seg++) {
@@ -303,7 +314,7 @@ async function getRenderedImage(device, transform, triangle_data, indicator_tran
 					visible_width = (best_slope - cur_slope)/2; //I assume that each point is attached to 2 segments
 					darken_by_color(visible_width, u32(lowest_segment));
 	              }
-				}*/ 
+				} 
 			}
 			workgroupBarrier();
 			if (lid.x == 0) {
@@ -319,8 +330,14 @@ async function getRenderedImage(device, transform, triangle_data, indicator_tran
 				} else {
 					out[wid.x + width*wid.y] = brightnessB*256*256 + brightnessG*256 + brightnessR;
 				}
-				if (is_overlay) {
-					out[wid.x + width*wid.y] = min(100 + brightness, 255);
+				if (is_overlay){
+					if (atomicLoad(&closest_point) > atomicLoad(&closest_overlay)) {
+						out[wid.x + width*wid.y] = 255;
+					} else {
+						if (!is_on_edge) {
+							out[wid.x + width*wid.y] = min(100 + brightness, 255);
+						} 
+					}
 				}
 				if (u32(sceneData.debug_pixel[0]) == wid.x && u32(sceneData.debug_pixel[1]) == wid.y) {
 					out[wid.x + width*wid.y] = 0xFF00FF;

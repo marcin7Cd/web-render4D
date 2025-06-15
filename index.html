@@ -21,15 +21,56 @@
 </head>
 
 <body>
-		<p>Experimental 4D rendering of a hypercube with occlucions. <b>Works only with GPU and a browsers with webGPU.</b></p>
+		<p>Experimental 4D rendering of a hypercube with occlusions. Diagram of projected 4D shape is shown, but occlusions in the 4th dimension are preserved. <b>Works only with GPU and a browsers with webGPU.</b></p>
+	<p>Choose object to render <select id="object selector"></select> 
+		<input type="checkbox" id="checkbox-lower-4Dframerate"></input> 
+		lower 4D framerate (improves spacial understanding of 4D rotation)
+	</p>
+	<p>D, F, G, R - rotate the indicator of 4D rotation. </p>
+	<p> C, V - drags the object in 4th dimension along the red indicator. </p>
+	<p> mouse - rotate the view (in 3D).</p>
+	<p> P -pause</p>
 	<div class="canvas-container">
     	<canvas id="gpuCanvas" width=600 height=600></canvas>
 		<canvas id="debugCanvas" width=600 height="600"></canvas>
 	</div>
-		<p>To pause you can press P. Use keys Q,W,E to trigger rotations involving 4th dimension. 
-			With mouse you can rotate the projection in 3D.</p>
-		<p>You can upload your own shape file here</p>
+		<p>You can upload your own shape file here. The format is described below</p>
 		<input type="file" id="hypershape_input"></input>
+		<p>The 4D shape is made up of cells being a 3d volumes (in 4D space).
+    <strong>Each cell have to be convex</strong> for proper rendering.
+    <em>Hint: to get the effect of non-convex cells, you need to cut that
+        cell into many convex cells and mark the connecting 2-d surface as not
+        boundary.</em>
+    Each cell is made up of triangles (surface of the cell). For each triangle
+    you need to specify which edges should be drawn and if the surface should
+    be a boundary (by default it is).</p>
+<p>The format of the shape file:</p>
+<ul>
+    <li>In the first <em>n</em> lines write four coordinates of the points
+        making up the shape</li>
+    <li>New line</li>
+    <li>Description of the cell
+        <ul>
+            <li>In the first line you write <em>m</em> - a number of traingles
+                in the cell, then optionally an RGB coded color of the cell
+                that is three numbers in the range 0-255.</li>
+            <li>In each line you specifiy a triangle
+                <ul>
+                    <li>numbers A B C specifying the indices of 3 points
+                        (making up the triangle) in the list of points given at
+                        begining (0-indexed).</li>
+                    <li>zero-one string coded in the following way: is edge A-B
+                        visible, is edge A-C visible, is edge B-C visible, is
+                        triangle a boundary (by default it is 1).</li>
+                </ul>
+            </li>
+        </ul>
+    </li>
+    <li>repeat for each cell in the shape but seperate cell descriptions with a
+        new line.</li>
+</ul>
+<p> The center of the object is assumed to be (0.25, 0.25, 0.25, 0.25)</p>
+<p>project code: <a href = https://github.com/marcin7Cd/web-render4D>https://github.com/marcin7Cd/web-render4D</a>  </p>
 <script src="renderer.js"> </script> 
 <script id="hypercube" type="hypershape">16 8
 0 0 0 0
@@ -161,8 +202,323 @@
 12 14 15 101
 12 13 15 101
 </script>
+<script id="hyper cup" type="hypershape">32 20
+0 0 0 0
+0.5 0 0 0
+0 0.5 0 0
+0.5 0.5 0 0
+0 0 0.5 0
+0.5 0 0.5 0
+0 0.5 0.5 0
+0.5 0.5 0.5 0
+0 0 0 0.5
+0.5 0 0 0.5
+0 0.5 0 0.5
+0.5 0.5 0 0.5
+0 0 0.5 0.5
+0.5 0 0.5 0.5
+0 0.5 0.5 0.5
+0.5 0.5 0.5 0.5
+0.15 0.15 0.15 0.3
+0.35 0.15 0.15 0.3
+0.15 0.35 0.15 0.3
+0.35 0.35 0.15 0.3
+0.15 0.15 0.35 0.3
+0.35 0.15 0.35 0.3
+0.15 0.35 0.35 0.3
+0.35 0.35 0.35 0.3
+0.15 0.15 0.15 0.5
+0.35 0.15 0.15 0.5
+0.15 0.35 0.15 0.5
+0.35 0.35 0.15 0.5
+0.15 0.15 0.35 0.5
+0.35 0.15 0.35 0.5
+0.15 0.35 0.35 0.5
+0.35 0.35 0.35 0.5
+
+12
+0 1 4 0011
+1 4 5 0110
+0 1 2 0011
+1 2 3 0110
+1 3 5 0011
+3 5 7 0110
+4 5 6 0011
+5 6 7 0110
+0 2 4 0011
+2 4 6 0110
+2 3 6 0011
+3 6 7 0110
+
+12
+0 1 4 0011
+1 4 5 0110
+0 1 8 0011
+1 8 9 0110
+1 5 9 0011
+5 9 13 0110
+4 5 12 0011
+5 12 13 0110
+0 4 8 0011
+4 8 12 0110
+8 9 12 0011
+9 12 13 0110
+
+12
+0 1 2 0011
+1 2 3 0110
+0 1 8 0011
+1 8 9 0110
+1 3 9 0011
+3 9 11 0110
+2 3 10 0011
+3 10 11 0110
+0 2 8 0011
+2 8 10 0110
+8 9 10 0011
+9 10 11 0110
+
+12
+0 2 4 0011
+2 4 6 0110
+0 4 8 0011
+4 8 12 0110
+4 6 12 0011
+6 12 14 0110
+2 6 10 0011
+6 10 14 0110
+0 2 8 0011
+2 8 10 0110
+8 10 12 0011
+10 12 14 0110
+
+12
+1 3 5 0011
+3 5 7 0110
+1 5 9 0011
+5 9 13 0110
+5 7 13 0011
+7 13 15 0110
+3 7 11 0011
+7 11 15 0110
+1 3 9 0011
+3 9 11 0110
+9 11 13 0011
+11 13 15 0110
+
+12
+4 5 6 0011
+5 6 7 0110
+4 5 12 0011
+5 12 13 0110
+5 7 13 0011
+7 13 15 0110
+6 7 14 0011
+7 14 15 0110
+4 6 12 0011
+6 12 14 0110
+12 13 14 0011
+13 14 15 0110
+
+12
+2 3 6 0011
+3 6 7 0110
+2 3 10 0011
+3 10 11 0110
+3 7 11 0011
+7 11 15 0110
+6 7 14 0011
+7 14 15 0110
+2 6 10 0011
+6 10 14 0110
+10 11 14 0011
+11 14 15 0110
+
+12
+8 9 12 0011
+9 12 13 0110
+8 12 24 1001
+12 24 28 1100
+12 13 28 1001
+13 28 29 1100
+9 13 25 1001
+13 25 29 1100
+8 9 24 1001
+9 24 25 1100
+24 25 28 0011
+25 28 29 0110
+
+12
+8 9 10 0011
+9 10 11 0110
+8 9 24 1001
+9 24 25 1100
+9 11 25 1001
+11 25 27 1100
+10 11 26 1001
+11 26 27 1100
+8 10 24 1001
+10 24 26 1100
+24 25 26 0011
+25 26 27 0110
+
+12
+8 10 12 0011
+10 12 14 0110
+8 10 24 1001
+10 24 26 1100
+10 14 26 1001
+14 26 30 1100
+12 14 28 1001
+14 28 30 1100
+8 12 24 1001
+12 24 28 1100
+24 26 28 0011
+26 28 30 0110
+
+12
+9 11 13 0011
+11 13 15 0110
+9 11 25 1001
+11 25 27 1100
+11 15 27 1001
+15 27 31 1100
+13 15 29 1001
+15 29 31 1100
+9 13 25 1001
+13 25 29 1100
+25 27 29 0011
+27 29 31 0110
+
+12
+12 13 14 0011
+13 14 15 0110
+12 13 28 1001
+13 28 29 1100
+13 15 29 1001
+15 29 31 1100
+14 15 30 1001
+15 30 31 1100
+12 14 28 1001
+14 28 30 1100
+28 29 30 0011
+29 30 31 0110
+
+12
+10 11 14 0011
+11 14 15 0110
+10 11 26 1001
+11 26 27 1100
+11 15 27 1001
+15 27 31 1100
+14 15 30 1001
+15 30 31 1100
+10 14 26 1001
+14 26 30 1100
+26 27 30 0011
+27 30 31 0110
+
+12
+16 17 20 0011
+17 20 21 0110
+16 17 24 0011
+17 24 25 0110
+17 21 25 0011
+21 25 29 0110
+20 21 28 0011
+21 28 29 0110
+16 20 24 0011
+20 24 28 0110
+24 25 28 0011
+25 28 29 0110
+
+12
+16 17 18 0011
+17 18 19 0110
+16 17 24 0011
+17 24 25 0110
+17 19 25 0011
+19 25 27 0110
+18 19 26 0011
+19 26 27 0110
+16 18 24 0011
+18 24 26 0110
+24 25 26 0011
+25 26 27 0110
+
+12
+16 18 20 0011
+18 20 22 0110
+16 20 24 0011
+20 24 28 0110
+20 22 28 0011
+22 28 30 0110
+18 22 26 0011
+22 26 30 0110
+16 18 24 0011
+18 24 26 0110
+24 26 28 0011
+26 28 30 0110
+
+12
+17 19 21 0011
+19 21 23 0110
+17 19 25 0011
+19 25 27 0110
+19 23 27 0011
+23 27 31 0110
+21 23 29 0011
+23 29 31 0110
+17 21 25 0011
+21 25 29 0110
+25 27 29 0011
+27 29 31 0110
+
+12
+20 21 22 0011
+21 22 23 0110
+20 22 28 0011
+22 28 30 0110
+22 23 30 0011
+23 30 31 0110
+21 23 29 0011
+23 29 31 0110
+20 21 28 0011
+21 28 29 0110
+28 29 30 0011
+29 30 31 0110
+
+12
+18 19 22 0011
+19 22 23 0110
+18 19 26 0011
+19 26 27 0110
+19 23 27 0011
+23 27 31 0110
+22 23 30 0011
+23 30 31 0110
+18 22 26 0011
+22 26 30 0110
+26 27 30 0011
+27 30 31 0110
+
+12
+16 17 20 0011
+17 20 21 0110
+16 17 18 0011
+17 18 19 0110
+17 19 21 0011
+19 21 23 0110
+20 21 22 0011
+21 22 23 0110
+16 18 20 0011
+18 20 22 0110
+18 19 22 0011
+19 22 23 0110
+</script>
 <script>
 
+document.querySelector("#checkbox-lower-4Dframerate").checked = false;
 function from_binary(text) {
 	exp = 1
 	sum = 0
@@ -237,6 +593,23 @@ const curFiles = shape_input.files;
 }
 
 shape_input.addEventListener('change', update_shape)
+
+object_selector = document.getElementById("object selector");
+
+//populate the selector with available objects
+document.querySelectorAll("script[type='hypershape']").forEach((x) => {
+	const object_name = x.getAttribute("id");
+	option = document.createElement("option");
+	option.setAttribute("value", object_name);
+	option.textContent = object_name;
+	object_selector.appendChild(option)
+})
+
+object_selector.addEventListener("change", (event) => {
+	console.log(event)
+	object_data = document.getElementById(event.target.value).textContent;
+	object_to_render = format_hypershape_data(object_data);
+})
 
 var debug_transformation = (a,b) => ([(a-1)*600 + 200, -(b-1)*600 + 200]);
 
@@ -426,6 +799,8 @@ async function main() {
 	
 	then = 0;
 	var motion_transformation = translation_matrix([0,0,0,0]);
+	var motion_ind_transformation = translation_matrix([0,0,0,0]);
+	var motion_ind_transformation_inv = translation_matrix([0,0,0,0]);
 	var motion4D_transformation = translation_matrix([0,0,0,0]);
 
 	var indicator_yz_angle = 0;
@@ -476,7 +851,7 @@ async function main() {
 		}
 		context.moveTo(...debug_transformation(points[4*i + 0],points[4*i + 1]));  // Move to start point
 		context.lineTo(...debug_transformation(points[4*i + 2],points[4*i + 3]));  // Move to start point
-		context.lineWidth = 4;  // Set line width
+		context.lineWidth = 2;  // Set line width
 		context.stroke();  // Draw the actual line	
 	}
 	for (let i = 0; i < 30; i++) {
@@ -494,42 +869,60 @@ async function main() {
 	return x;
   }
 
+  var frame_id = 0;
+  var then4D = 0;
   async function render(now) {
-	
+	frame_id += 1;
 	now = now*0.001
 	if (! run_animation) {
 		requestAnimationFrame(render);
 		return;
 	}
 	diff = now - then;
-	indicator_xy_angle += diff * ind_xy_rotatation;
-	indicator_yz_angle = clamp(indicator_yz_angle - diff * ind_yz_rotatation, Math.PI/2, -Math.PI/2);
+	//indicator_xy_angle += diff * ind_xy_rotatation;
+	//indicator_yz_angle = clamp(indicator_yz_angle - diff * ind_yz_rotatation, Math.PI/2, -Math.PI/2);
 	then = now;
+	diff4D = 0;
+	if (!document.querySelector("#checkbox-lower-4Dframerate").checked || frame_id % 3 == 0) {
+		diff4D = now - then4D;
+		then4D = now;
+	}
 
 	function transform_at_origin(transformation) {
 		return mutiply_matrices5x5(translation_matrix([0.25, 0.25, 0.25, 0.25]), 
 					 mutiply_matrices5x5(transformation, translation_matrix([-0.25, -0.25, -0.25, -0.25])) )
 	}
 
-	const indicator_transformation = transform_at_origin(mutiply_matrices5x5(rotation_matrix(indicator_xy_angle, 0, 1),
-                                                         rotation_matrix(indicator_yz_angle, 1, 2)));
+	const indicator_rotation = transform_at_origin(mutiply_matrices5x5(rotation_matrix(ind_xy_rotatation*diff*90*Math.PI/180, 0, 1),
+                                                         rotation_matrix(ind_yz_rotatation*diff*90*Math.PI/180, 1, 2)));
 	
-	const indicator_transformation_inv = transform_at_origin(mutiply_matrices5x5(rotation_matrix(-indicator_yz_angle, 1, 2),
-	                                                         rotation_matrix(-indicator_xy_angle, 0, 1)));
+	const indicator_rotation_inv = transform_at_origin(mutiply_matrices5x5(rotation_matrix(-ind_yz_rotatation*diff*90*Math.PI/180, 1, 2),
+	                                                         rotation_matrix(-ind_xy_rotatation*diff*90*Math.PI/180, 0, 1)));
 
 													
 	const mouse_rotation = mutiply_matrices5x5(rotation_matrix((-rotate_yz*90*diff)*Math.PI/180,0,2),
 	                                           rotation_matrix((rotate_xy*90*diff)*Math.PI/180,0,1))
 
+
+	motion_ind_transformation = compose_transformations([
+		motion_ind_transformation,
+		indicator_rotation
+	])
+
+	motion_ind_transformation_inv = compose_transformations([
+		indicator_rotation_inv,
+		motion_ind_transformation_inv
+	])
+	
 	motion_transformation = compose_transformations([
 		transform_at_origin(mouse_rotation),
 		motion_transformation
 	]);
 
 	motion4D_transformation = compose_transformations([
-		indicator_transformation,
-		transform_at_origin(rotation_matrix(90*diff*Math.PI/180*ind_4D_rotation, 1,3)),
-		indicator_transformation_inv,
+		motion_ind_transformation,
+		transform_at_origin(rotation_matrix(90*diff4D*Math.PI/180*ind_4D_rotation, 1,3)),
+		motion_ind_transformation_inv,
 		motion4D_transformation
 	])
 	
@@ -537,7 +930,7 @@ async function main() {
 
 	const renderData = await getRenderedImage(device, final_transformation, object_to_render, 
 										compose_transformations([motion_transformation,
-										                         indicator_transformation]));
+										                         motion_ind_transformation]));
 	const finalImage = renderData[0];
 	const debugSegments = renderData[1];
 	draw_segments(debugSegments);
