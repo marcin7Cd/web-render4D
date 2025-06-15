@@ -762,6 +762,8 @@ async function main() {
 	
 	then = 0;
 	var motion_transformation = translation_matrix([0,0,0,0]);
+	var motion_ind_transformation = translation_matrix([0,0,0,0]);
+	var motion_ind_transformation_inv = translation_matrix([0,0,0,0]);
 	var motion4D_transformation = translation_matrix([0,0,0,0]);
 
 	var indicator_yz_angle = 0;
@@ -840,8 +842,8 @@ async function main() {
 		return;
 	}
 	diff = now - then;
-	indicator_xy_angle += diff * ind_xy_rotatation;
-	indicator_yz_angle = clamp(indicator_yz_angle - diff * ind_yz_rotatation, Math.PI/2, -Math.PI/2);
+	//indicator_xy_angle += diff * ind_xy_rotatation;
+	//indicator_yz_angle = clamp(indicator_yz_angle - diff * ind_yz_rotatation, Math.PI/2, -Math.PI/2);
 	then = now;
 	diff4D = 0;
 	if (!document.querySelector("#checkbox-lower-4Dframerate").checked || frame_id % 3 == 0) {
@@ -854,25 +856,36 @@ async function main() {
 					 mutiply_matrices5x5(transformation, translation_matrix([-0.25, -0.25, -0.25, -0.25])) )
 	}
 
-	const indicator_transformation = transform_at_origin(mutiply_matrices5x5(rotation_matrix(indicator_xy_angle, 0, 1),
-                                                         rotation_matrix(indicator_yz_angle, 1, 2)));
+	const indicator_rotation = transform_at_origin(mutiply_matrices5x5(rotation_matrix(ind_xy_rotatation*diff*90*Math.PI/180, 0, 1),
+                                                         rotation_matrix(ind_yz_rotatation*diff*90*Math.PI/180, 1, 2)));
 	
-	const indicator_transformation_inv = transform_at_origin(mutiply_matrices5x5(rotation_matrix(-indicator_yz_angle, 1, 2),
-	                                                         rotation_matrix(-indicator_xy_angle, 0, 1)));
+	const indicator_rotation_inv = transform_at_origin(mutiply_matrices5x5(rotation_matrix(-ind_yz_rotatation*diff*90*Math.PI/180, 1, 2),
+	                                                         rotation_matrix(-ind_xy_rotatation*diff*90*Math.PI/180, 0, 1)));
 
 													
 	const mouse_rotation = mutiply_matrices5x5(rotation_matrix((-rotate_yz*90*diff)*Math.PI/180,0,2),
 	                                           rotation_matrix((rotate_xy*90*diff)*Math.PI/180,0,1))
 
+
+	motion_ind_transformation = compose_transformations([
+		motion_ind_transformation,
+		indicator_rotation
+	])
+
+	motion_ind_transformation_inv = compose_transformations([
+		indicator_rotation_inv,
+		motion_ind_transformation_inv
+	])
+	
 	motion_transformation = compose_transformations([
 		transform_at_origin(mouse_rotation),
 		motion_transformation
 	]);
 
 	motion4D_transformation = compose_transformations([
-		indicator_transformation,
+		motion_ind_transformation,
 		transform_at_origin(rotation_matrix(90*diff4D*Math.PI/180*ind_4D_rotation, 1,3)),
-		indicator_transformation_inv,
+		motion_ind_transformation_inv,
 		motion4D_transformation
 	])
 	
@@ -880,7 +893,7 @@ async function main() {
 
 	const renderData = await getRenderedImage(device, final_transformation, object_to_render, 
 										compose_transformations([motion_transformation,
-										                         indicator_transformation]));
+										                         motion_ind_transformation]));
 	const finalImage = renderData[0];
 	const debugSegments = renderData[1];
 	draw_segments(debugSegments);
