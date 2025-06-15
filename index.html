@@ -9,16 +9,27 @@
         canvas {
             width: 200;
             height: 200;
-            display: block;
+            display: inline-block;
+            border: 1px solid black;
+            margin: 10px;
+        }
+        .canvas-container {
+            text-align: center;
+            margin-top: 50px;
         }
     </style>
 </head>
 
 <body>
 		<p>Experimental 4D rendering of a hypercube with occlucions. <b>Works only with GPU and a browsers with webGPU.</b></p>
-    <canvas id="gpuCanvas" width=600 height=600></canvas>
-		<p>To pause you can press P. Use keys Q,W,E to trigger rotations involving 4th dimension. With mouse you can rotate the projection in 3D.</p>
-
+	<div class="canvas-container">
+    	<canvas id="gpuCanvas" width=600 height=600></canvas>
+		<canvas id="debugCanvas" width=600 height="600"></canvas>
+	</div>
+		<p>To pause you can press P. Use keys Q,W,E to trigger rotations involving 4th dimension. 
+			With mouse you can rotate the projection in 3D.</p>
+		<p>You can upload your own shape file here</p>
+		<input type="file" id="hypershape_input"></input>
 <script src="renderer.js"> </script> 
 <script id="hypercube" type="hypershape">16 8
 0 0 0 0
@@ -38,7 +49,7 @@
 0 0.5 0.5 0.5
 0.5 0.5 0.5 0.5
 
-12
+12 255 0 0
 0 8 10 101
 0 2 10 101
 0 4 6 101
@@ -51,7 +62,8 @@
 4 12 14 101
 8 12 14 101
 8 10 14 101
-12
+
+12 0 255 0
 1 9 11 101
 1 3 11 101
 1 5 7 101
@@ -64,7 +76,8 @@
 5 13 15 101
 9 13 15 101
 9 11 15 101
-12
+
+12 0 0 255
 0 8 9 101
 0 1 9 101
 0 4 5 101
@@ -77,7 +90,8 @@
 4 12 13 101
 8 12 13 101
 8 9 13 101
-12
+
+12 128 0 0
 2 10 11 101
 2 3 11 101
 2 6 7 101
@@ -90,7 +104,8 @@
 6 14 15 101
 10 14 15 101
 10 11 15 101
-12
+
+12 0 128 0
 0 8 9 101
 0 1 9 101
 0 2 3 101
@@ -103,7 +118,8 @@
 2 10 11 101
 8 10 11 101
 8 9 11 101
-12
+
+12 0 0 128
 4 12 13 101
 4 5 13 101
 4 6 7 101
@@ -116,7 +132,8 @@
 6 14 15 101
 12 14 15 101
 12 13 15 101
-12
+
+12 128 0 128
 0 4 5 101
 0 1 5 101
 0 2 3 101
@@ -129,7 +146,8 @@
 2 6 7 101
 4 6 7 101
 4 5 7 101
-12
+
+12 0 128 128
 8 12 13 101
 8 9 13 101
 8 10 11 101
@@ -169,8 +187,17 @@ function format_hypershape_data(text) {
 	cur_row += 1; //for new line between coords and cells
 	triangles = []
 	triangles_info = []
+	cell_info = []
 	for (let cell = 0; cell < num_of_cells; cell++) {
-		cell_num_of_triangles = parseInt(rows[cur_row]);
+		first_row = rows[cur_row].split(" ");
+		cell_num_of_triangles = parseInt(first_row[0]);
+		if (first_row.length > 1) {
+			cell_info.push(parseInt(first_row[1])*256*256 +
+		                   parseInt(first_row[2])*256 + 
+						   parseInt(first_row[3]))
+		} else {
+			cell_info.push(0);
+		}
 		cur_row += 1
 		for (let j = 0; j < cell_num_of_triangles; j++) {
 			entry =  rows[cur_row + j].split(" ")
@@ -182,7 +209,7 @@ function format_hypershape_data(text) {
 										t[2] == cur_triangle[2]))
 			if (duplicate_id == -1) {
 				triangles.push(cur_triangle);
-				triangles_info.push([cell+1, 0, from_binary(entry[0]),0])
+				triangles_info.push([cell+1, 0, from_binary(entry[0].trim()),0])
 				//triangles_info.push([cell+1, 0, 7,0])
 			}
 			else {
@@ -190,14 +217,32 @@ function format_hypershape_data(text) {
 			}
 		}
 		cur_row += cell_num_of_triangles;
+		cur_row += 1;
 	}
 	
-	return [triangles, triangles_info]
+	return [triangles, triangles_info, cell_info]
 }
 
+var object_to_render = null;
+
+const shape_input = document.querySelector("#hypershape_input")
+
+function update_shape() {
+const curFiles = shape_input.files;
+	if (curFiles.length == 1) {
+		const reader = new FileReader()
+		reader.addEventListener('load', () => object_to_render = format_hypershape_data(reader.result))
+		reader.readAsText(curFiles[0]);
+	}
+}
+
+shape_input.addEventListener('change', update_shape)
+
+var debug_transformation = (a,b) => ([(a-1)*600 + 200, -(b-1)*600 + 200]);
+
 async function main() {
-	let object_to_render = format_hypershape_data(document.querySelector("#hypercube").text);
-	console.log(object_to_render[0].length)
+  object_to_render = format_hypershape_data(document.querySelector("#hypercube").text);
+  console.log(object_to_render)
   const adapter = await navigator.gpu?.requestAdapter();
   const device = await adapter?.requestDevice();
   if (!device) {
@@ -206,7 +251,7 @@ async function main() {
   }
 
   // Get a WebGPU context from the canvas and configure it
-  const canvas = document.querySelector('canvas');
+  const canvas = document.querySelector('#gpuCanvas');
   const context = canvas.getContext('webgpu');
   const presentationFormat = navigator.gpu.getPreferredCanvasFormat();
   context.configure({
@@ -293,6 +338,14 @@ async function main() {
 		}
 		return resM
 	}
+
+	function compose_transformations(transformations) {
+		let result = translation_matrix([0,0,0,0])
+		for (let i=0; i < transformations.length; i++) {
+			result = mutiply_matrices5x5(result, transformations[i])
+		}
+		return result
+	}
 	
 	function translation_matrix(p) {
 		return [[1,0,0,0,p[0]],
@@ -323,8 +376,8 @@ async function main() {
 	/*for (t of transformations) {
 		transform = mutiply_matrices5x5(transform, t);
 	}*/
-	const finalImage = await getRenderedImage(device, transform,
-	object_to_render);
+	const finalImage = (await getRenderedImage(device, transform,
+	object_to_render, translation_matrix([0,0,0,0])))[0];
 	device.queue.writeTexture(
       { texture },
       finalImage,
@@ -354,21 +407,9 @@ async function main() {
     ],
   };
 	var run_animation = true;
-	var rotate_zt = 0.0;
-	var rotate_xt = 0.0;
-	var rotate_yt = 0.0;
 	function check_pause (e) {
 		if (e.key == "p") {
 			run_animation = !run_animation;
-		}
-		if (e.key == "w") {
-			rotate_zt =  1 - rotate_zt;
-		}
-		if (e.key == "e") {
-			rotate_xt =  1 - rotate_xt;
-		}
-		if (e.key == "q") {
-			rotate_yt = 1 -rotate_yt;
 		}
 	}
 	document.addEventListener("keydown", check_pause)
@@ -384,9 +425,75 @@ async function main() {
 	})
 	
 	then = 0;
-	var cur_transformation = rotation_matrix(12, 1, 2);
 	var motion_transformation = translation_matrix([0,0,0,0]);
+	var motion4D_transformation = translation_matrix([0,0,0,0]);
+
+	var indicator_yz_angle = 0;
+	var indicator_xy_angle = 0;
+	var ind_yz_rotatation = 0;
+	var ind_xy_rotatation = 0;
+	var ind_4D_rotation = 0;
+	document.addEventListener("keydown", (e) => {
+		console.log([e.key, "keydown"])
+		if(e.key == "r") {ind_yz_rotatation = 1;}
+		if(e.key == "f") {ind_yz_rotatation = -1;}
+		if(e.key == "g") {ind_xy_rotatation = 1;}
+		if(e.key == "d") {ind_xy_rotatation = -1;}
+		if(e.key == "c") {ind_4D_rotation = 1;}
+		if(e.key == "v") {ind_4D_rotation = -1;}
+	})
+
+	document.addEventListener("keyup", (e) => {
+		console.log([e.key, "keyup"])
+		if(e.key == "r" || e.key == "f") {ind_yz_rotatation = 0;}
+		if(e.key == "g" || e.key == "d") {ind_xy_rotatation = 0;}
+		if(e.key == "c" || e.key == "v") {ind_4D_rotation = 0;}
+	})
+
+	document.addEventListener("blur", (e) => { //if you switch tabs the keyup event will not fire
+		ind_xy_rotatation = 0;
+		ind_yz_rotatation = 0;
+		ind_4D_rotation = 0;
+	})
+	window.addEventListener("blur", (e) => { //if you switch tabs the keyup event will not fire
+		ind_xy_rotatation = 0;
+		ind_yz_rotatation = 0;
+		ind_4D_rotation = 0;
+	})
 	
+
+  function draw_segments(points) {
+	const canvas = document.getElementById('debugCanvas');
+	const context = canvas.getContext('2d');
+	const N = points.length;
+	context.clearRect(0, 0, canvas.width, canvas.height);
+	for (let i = 0; i < N/4; i++) {
+		context.beginPath();
+		if (i < object_to_render[2].length) {
+			context.strokeStyle = `#${object_to_render[2][i].toString(16).padStart(6, '0')}`
+		} else {
+			context.strokeStyle = '#ffffff'
+		}
+		context.moveTo(...debug_transformation(points[4*i + 0],points[4*i + 1]));  // Move to start point
+		context.lineTo(...debug_transformation(points[4*i + 2],points[4*i + 3]));  // Move to start point
+		context.lineWidth = 4;  // Set line width
+		context.stroke();  // Draw the actual line	
+	}
+	for (let i = 0; i < 30; i++) {
+		context.beginPath();
+		context.moveTo(...debug_transformation(0,0));
+		context.lineTo(...debug_transformation(i*0.5,10));
+		context.strokeStyle = 'red';
+		context.lineWidth = 1;
+		context.stroke();
+	}
+  }
+  function clamp (x, a, b) {
+	if (x > a) {return a;}
+	if (x < b) {return b;}
+	return x;
+  }
+
   async function render(now) {
 	
 	now = now*0.001
@@ -395,29 +502,45 @@ async function main() {
 		return;
 	}
 	diff = now - then;
+	indicator_xy_angle += diff * ind_xy_rotatation;
+	indicator_yz_angle = clamp(indicator_yz_angle - diff * ind_yz_rotatation, Math.PI/2, -Math.PI/2);
 	then = now;
-	var _temp = mutiply_matrices5x5(rotation_matrix((-rotate_yz*90*diff)*Math.PI/180,0,2), 
-															rotation_matrix((rotate_xy*90*diff)*Math.PI/180,0,1))
-	motion_transformation = mutiply_matrices5x5(_temp, motion_transformation)
-	
+
 	function transform_at_origin(transformation) {
 		return mutiply_matrices5x5(translation_matrix([0.25, 0.25, 0.25, 0.25]), 
 					 mutiply_matrices5x5(transformation, translation_matrix([-0.25, -0.25, -0.25, -0.25])) )
 	}
+
+	const indicator_transformation = transform_at_origin(mutiply_matrices5x5(rotation_matrix(indicator_xy_angle, 0, 1),
+                                                         rotation_matrix(indicator_yz_angle, 1, 2)));
 	
-	const transformations = [translation_matrix([0.25, 0.25, 0.25, 0.25]),
-													 //rotation_matrix((rotate_xy*90*diff)*Math.PI/180, 0, 1),
-													 //rotation_matrix((rotate_xz*90*diff)*Math.PI/180, 0, 2),
-													 rotation_matrix((rotate_zt*90*diff)*Math.PI/180, 2, 3),
-													 rotation_matrix((rotate_yt*90*diff)*Math.PI/180, 1, 3),
-													 rotation_matrix((rotate_xt*90*diff)*Math.PI/180, 0, 3),
-													 translation_matrix([-0.25, -0.25, -0.25, -0.25])]
-										
-	for (t of transformations) {
-		cur_transformation = mutiply_matrices5x5(cur_transformation, t);
-	}
-	const final_transformation = mutiply_matrices5x5(transform_at_origin(motion_transformation), cur_transformation);
-	const finalImage = await getRenderedImage(device, final_transformation, object_to_render);
+	const indicator_transformation_inv = transform_at_origin(mutiply_matrices5x5(rotation_matrix(-indicator_yz_angle, 1, 2),
+	                                                         rotation_matrix(-indicator_xy_angle, 0, 1)));
+
+													
+	const mouse_rotation = mutiply_matrices5x5(rotation_matrix((-rotate_yz*90*diff)*Math.PI/180,0,2),
+	                                           rotation_matrix((rotate_xy*90*diff)*Math.PI/180,0,1))
+
+	motion_transformation = compose_transformations([
+		transform_at_origin(mouse_rotation),
+		motion_transformation
+	]);
+
+	motion4D_transformation = compose_transformations([
+		indicator_transformation,
+		transform_at_origin(rotation_matrix(90*diff*Math.PI/180*ind_4D_rotation, 1,3)),
+		indicator_transformation_inv,
+		motion4D_transformation
+	])
+	
+	const final_transformation = mutiply_matrices5x5(motion_transformation, motion4D_transformation);
+
+	const renderData = await getRenderedImage(device, final_transformation, object_to_render, 
+										compose_transformations([motion_transformation,
+										                         indicator_transformation]));
+	const finalImage = renderData[0];
+	const debugSegments = renderData[1];
+	draw_segments(debugSegments);
 	device.queue.writeTexture(
       { texture },
       finalImage,
