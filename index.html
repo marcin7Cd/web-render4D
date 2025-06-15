@@ -21,19 +21,56 @@
 </head>
 
 <body>
-		<p>Experimental 4D rendering of a hypercube with occlucions. <b>Works only with GPU and a browsers with webGPU.</b></p>
+		<p>Experimental 4D rendering of a hypercube with occlusions. Diagram of projected 4D shape is shown, but occlusions in the 4th dimension are preserved. <b>Works only with GPU and a browsers with webGPU.</b></p>
 	<p>Choose object to render <select id="object selector"></select> 
 		<input type="checkbox" id="checkbox-lower-4Dframerate"></input> 
 		lower 4D framerate (improves spacial understanding of 4D rotation)
 	</p>
+	<p>D, F, G, R - rotate the indicator of 4D rotation. </p>
+	<p> C, V - drags the object in 4th dimension along the red indicator. </p>
+	<p> mouse - rotate the view (in 3D).</p>
+	<p> P -pause</p>
 	<div class="canvas-container">
     	<canvas id="gpuCanvas" width=600 height=600></canvas>
 		<canvas id="debugCanvas" width=600 height="600"></canvas>
 	</div>
-		<p>To pause you can press P. Use keys Q,W,E to trigger rotations involving 4th dimension. 
-			With mouse you can rotate the projection in 3D.</p>
-		<p>You can upload your own shape file here</p>
+		<p>You can upload your own shape file here. The format is described below</p>
 		<input type="file" id="hypershape_input"></input>
+		<p>The 4D shape is made up of cells being a 3d volumes (in 4D space).
+    <strong>Each cell have to be convex</strong> for proper rendering.
+    <em>Hint: to get the effect of non-convex cells, you need to cut that
+        cell into many convex cells and mark the connecting 2-d surface as not
+        boundary.</em>
+    Each cell is made up of triangles (surface of the cell). For each triangle
+    you need to specify which edges should be drawn and if the surface should
+    be a boundary (by default it is).</p>
+<p>The format of the shape file:</p>
+<ul>
+    <li>In the first <em>n</em> lines write four coordinates of the points
+        making up the shape</li>
+    <li>New line</li>
+    <li>Description of the cell
+        <ul>
+            <li>In the first line you write <em>m</em> - a number of traingles
+                in the cell, then optionally an RGB coded color of the cell
+                that is three numbers in the range 0-255.</li>
+            <li>In each line you specifiy a triangle
+                <ul>
+                    <li>numbers A B C specifying the indices of 3 points
+                        (making up the triangle) in the list of points given at
+                        begining (0-indexed).</li>
+                    <li>zero-one string coded in the following way: is edge A-B
+                        visible, is edge A-C visible, is edge B-C visible, is
+                        triangle a boundary (by default it is 1).</li>
+                </ul>
+            </li>
+        </ul>
+    </li>
+    <li>repeat for each cell in the shape but seperate cell descriptions with a
+        new line.</li>
+</ul>
+<p> The center of the object is assumed to be (0.25, 0.25, 0.25, 0.25)</p>
+<p>project code: <a href = https://github.com/marcin7Cd/web-render4D>https://github.com/marcin7Cd/web-render4D</a>  </p>
 <script src="renderer.js"> </script> 
 <script id="hypercube" type="hypershape">16 8
 0 0 0 0
