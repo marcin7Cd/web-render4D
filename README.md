@@ -1,5 +1,5 @@
 # web-render4D
-experimental renderer for 4D objects running on webGPU.
+experimental renderer for 4D objects running on webGPU. You can try it here: https://marcin7cd.github.io/web-render4D/.
 
 ## How 4D is displayed
 The 4D object is projected onto a 3D viewspaces and then it's projected onto the screen (look at diagram below). We have two two cameras one in 4D and one in 3D.
